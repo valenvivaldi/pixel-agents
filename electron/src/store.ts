@@ -11,6 +11,8 @@ interface StoreData {
   externalSessionsEnabled: boolean
   externalSessionsScope: 'currentProject' | 'allProjects'
   windowBounds?: { x: number; y: number; width: number; height: number }
+  serverUrl: string
+  userName: string
 }
 
 const defaults: StoreData = {
@@ -18,6 +20,8 @@ const defaults: StoreData = {
   showLabelsAlways: false,
   externalSessionsEnabled: true,
   externalSessionsScope: 'allProjects',
+  serverUrl: '',
+  userName: '',
 }
 
 let data: StoreData = { ...defaults }

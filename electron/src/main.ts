@@ -5,6 +5,7 @@ import * as os from 'os'
 import { PNG } from 'pngjs'
 import { loadSettings, setSetting } from './store'
 import { launchClaude, killProcess, killAllProcesses } from './processManager'
+import WebSocket from 'ws'
 
 // ── Constants (mirror src/constants.ts) ─────────────────────
 const PNG_ALPHA_THRESHOLD = 128
@@ -38,6 +39,11 @@ const SUBAGENT_TOOL_NAMES = new Set(['Task', 'Agent'])
 const TASK_MGMT_TOOL_NAMES = new Set(['TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet'])
 const BASH_COMMAND_DISPLAY_MAX_LENGTH = 30
 const TASK_DESCRIPTION_DISPLAY_MAX_LENGTH = 40
+
+const SYNC_HEARTBEAT_INTERVAL_MS = 2000
+const SYNC_LAYOUT_POLL_INTERVAL_MS = 3000
+const SYNC_RECONNECT_BASE_MS = 1000
+const SYNC_RECONNECT_MAX_MS = 10000
 
 // ── Types ───────────────────────────────────────────────────
 type SpriteData = string[][]
@@ -81,6 +87,15 @@ const externalTrackedFiles = new Map<string, number>()
 
 let layoutWatchTimer: ReturnType<typeof setInterval> | null = null
 let lastLayoutMtime = 0
+
+// ── Multiuser Sync State ────────────────────────────────
+let syncWs: WebSocket | null = null
+let syncHeartbeatTimer: ReturnType<typeof setInterval> | null = null
+let syncLayoutPollTimer: ReturnType<typeof setInterval> | null = null
+let syncReconnectTimer: ReturnType<typeof setTimeout> | null = null
+let syncReconnectDelay = SYNC_RECONNECT_BASE_MS
+let syncLayoutEtag = ''
+let syncDisposed = false
 
 // ── MessageEmitter for main window ──────────────────────────
 function getEmitter(): MessageEmitter | undefined {
@@ -900,6 +915,185 @@ function handleOpenClaude(): void {
   jsonlPollTimers.set(id, pollTimer)
 }
 
+// ── Multiuser Sync ──────────────────────────────────────
+function getSyncHttpBase(): string {
+  const settings = loadSettings()
+  return settings.serverUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:')
+}
+
+function syncConnect(): void {
+  const settings = loadSettings()
+  if (!settings.serverUrl || syncDisposed) return
+
+  try {
+    syncWs = new WebSocket(settings.serverUrl)
+
+    syncWs.on('open', () => {
+      console.log('[SyncClient] Connected to server')
+      syncReconnectDelay = SYNC_RECONNECT_BASE_MS
+      syncWs!.send(JSON.stringify({ type: 'join', userName: settings.userName || os.userInfo().username || 'Anonymous' }))
+      syncStartHeartbeat()
+    })
+
+    syncWs.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString())
+        if (msg.type === 'presence') {
+          getEmitter()?.postMessage({ type: 'remoteAgents', clients: msg.clients })
+        } else if (msg.type === 'layoutChanged') {
+          syncFetchLayout()
+        }
+      } catch (err) {
+        console.error('[SyncClient] Bad server message:', err)
+      }
+    })
+
+    syncWs.on('close', () => {
+      console.log('[SyncClient] Disconnected')
+      syncStopHeartbeat()
+      syncScheduleReconnect()
+    })
+
+    syncWs.on('error', (err) => {
+      console.error('[SyncClient] WS error:', err)
+    })
+  } catch (err) {
+    console.error('[SyncClient] Connection failed:', err)
+    syncScheduleReconnect()
+  }
+}
+
+function syncScheduleReconnect(): void {
+  if (syncDisposed || syncReconnectTimer) return
+  syncReconnectTimer = setTimeout(() => {
+    syncReconnectTimer = null
+    syncConnect()
+  }, syncReconnectDelay)
+  syncReconnectDelay = Math.min(syncReconnectDelay * 2, SYNC_RECONNECT_MAX_MS)
+}
+
+function syncStartHeartbeat(): void {
+  syncStopHeartbeat()
+  syncSendHeartbeat()
+  syncHeartbeatTimer = setInterval(syncSendHeartbeat, SYNC_HEARTBEAT_INTERVAL_MS)
+}
+
+function syncStopHeartbeat(): void {
+  if (syncHeartbeatTimer) { clearInterval(syncHeartbeatTimer); syncHeartbeatTimer = null }
+}
+
+function syncSendHeartbeat(): void {
+  if (!syncWs || syncWs.readyState !== WebSocket.OPEN) return
+
+  interface SyncRemoteAgent {
+    id: number
+    name: string
+    status: 'active' | 'idle' | 'waiting' | 'permission'
+    activeTool?: string
+    palette: number
+    hueShift: number
+  }
+
+  const remoteAgents: SyncRemoteAgent[] = []
+  for (const [id, agent] of agents) {
+    if (agent.isExternal) continue
+
+    let status: SyncRemoteAgent['status'] = 'idle'
+    if (agent.permissionSent) status = 'permission'
+    else if (agent.isWaiting) status = 'waiting'
+    else if (agent.activeToolIds.size > 0 || agent.hadToolsInTurn) status = 'active'
+
+    let activeTool: string | undefined
+    for (const toolName of agent.activeToolNames.values()) { activeTool = toolName; break }
+
+    remoteAgents.push({ id, name: `Agent ${id}`, status, activeTool, palette: 0, hueShift: 0 })
+  }
+
+  syncWs.send(JSON.stringify({ type: 'heartbeat', agents: remoteAgents }))
+}
+
+function syncFetchLayout(): void {
+  const httpBase = getSyncHttpBase()
+  if (!httpBase) return
+  const url = new URL('/layout', httpBase)
+  const mod = url.protocol === 'https:' ? require('https') : require('http')
+
+  const headers: Record<string, string> = {}
+  if (syncLayoutEtag) headers['If-None-Match'] = syncLayoutEtag
+
+  const req = mod.get(url.toString(), { headers }, (res: import('http').IncomingMessage) => {
+    if (res.statusCode === 304) return
+    let body = ''
+    res.on('data', (chunk: string) => { body += chunk })
+    res.on('end', () => {
+      if (res.statusCode === 200) {
+        const newEtag = res.headers['etag'] as string
+        if (newEtag && newEtag !== syncLayoutEtag) {
+          syncLayoutEtag = newEtag
+          try {
+            const layout = JSON.parse(body) as Record<string, unknown>
+            writeLayoutToFile(layout)
+            getEmitter()?.postMessage({ type: 'layoutLoaded', layout })
+          } catch (err) { console.error('[SyncClient] Bad layout JSON:', err) }
+        }
+      }
+    })
+  })
+  req.on('error', (err: Error) => { console.error('[SyncClient] Layout fetch error:', err) })
+}
+
+function syncPutLayout(layout: Record<string, unknown>): void {
+  const httpBase = getSyncHttpBase()
+  if (!httpBase) return
+  const json = JSON.stringify(layout)
+  const url = new URL('/layout', httpBase)
+  const mod = url.protocol === 'https:' ? require('https') : require('http')
+
+  const req = mod.request(url.toString(), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(json).toString() },
+  }, (res: import('http').IncomingMessage) => {
+    let body = ''
+    res.on('data', (chunk: string) => { body += chunk })
+    res.on('end', () => {
+      if (res.statusCode === 200) {
+        try { syncLayoutEtag = JSON.parse(body).etag } catch { /* ignore */ }
+      }
+    })
+  })
+  req.on('error', (err: Error) => { console.error('[SyncClient] Layout PUT error:', err) })
+  req.write(json)
+  req.end()
+}
+
+function syncStartLayoutPolling(): void {
+  if (syncLayoutPollTimer) return
+  syncLayoutPollTimer = setInterval(syncFetchLayout, SYNC_LAYOUT_POLL_INTERVAL_MS)
+}
+
+function syncInit(): void {
+  const settings = loadSettings()
+  if (!settings.serverUrl) {
+    console.log('[SyncClient] No server URL — offline mode')
+    return
+  }
+  console.log(`[SyncClient] Connecting to ${settings.serverUrl}`)
+  syncConnect()
+  syncStartLayoutPolling()
+
+  // Send local userName to webview
+  const userName = settings.userName || os.userInfo().username || 'Anonymous'
+  getEmitter()?.postMessage({ type: 'localUserName', userName })
+}
+
+function syncDispose(): void {
+  syncDisposed = true
+  syncStopHeartbeat()
+  if (syncLayoutPollTimer) { clearInterval(syncLayoutPollTimer); syncLayoutPollTimer = null }
+  if (syncReconnectTimer) { clearTimeout(syncReconnectTimer); syncReconnectTimer = null }
+  if (syncWs) { syncWs.close(); syncWs = null }
+}
+
 // ── IPC Message Handler ─────────────────────────────────────
 function setupIPC(): void {
   ipcMain.on('webview-message', async (_event, message: Record<string, unknown>) => {
@@ -926,6 +1120,7 @@ function setupIPC(): void {
       }
     } else if (message.type === 'saveLayout') {
       writeLayoutToFile(message.layout as Record<string, unknown>)
+      syncPutLayout(message.layout as Record<string, unknown>)
     } else if (message.type === 'setSoundEnabled') {
       setSetting('soundEnabled', message.enabled as boolean)
     } else if (message.type === 'setShowLabelsAlways') {
@@ -939,6 +1134,8 @@ function setupIPC(): void {
         showLabelsAlways: settings.showLabelsAlways,
         externalSessionsEnabled: settings.externalSessionsEnabled,
         externalSessionsScope: settings.externalSessionsScope,
+        serverUrl: settings.serverUrl,
+        userName: settings.userName,
       })
 
       const assetsRoot = findAssetsRoot()
@@ -963,6 +1160,7 @@ function setupIPC(): void {
 
       startLayoutWatcher()
       startExternalScan()
+      syncInit()
     } else if (message.type === 'exportLayout') {
       const layout = readLayoutFromFile()
       if (!layout) return
@@ -995,6 +1193,14 @@ function setupIPC(): void {
       // No-op in standalone (no VS Code to open explorer)
     } else if (message.type === 'saveAgentSeats') {
       // Persisted in memory only for standalone (no workspace state)
+    } else if (message.type === 'setServerUrl') {
+      setSetting('serverUrl', (message.url as string) || '')
+    } else if (message.type === 'setUserName') {
+      setSetting('userName', (message.name as string) || '')
+      if (syncWs?.readyState === WebSocket.OPEN) {
+        syncWs.send(JSON.stringify({ type: 'join', userName: message.name }))
+      }
+      getEmitter()?.postMessage({ type: 'localUserName', userName: message.name })
     }
   })
 }
@@ -1063,6 +1269,7 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  syncDispose()
   killAllProcesses()
   if (externalScanTimer) clearInterval(externalScanTimer)
   if (layoutWatchTimer) clearInterval(layoutWatchTimer)
