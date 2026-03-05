@@ -22,6 +22,12 @@ import {
   KAMEHAMEHA_KNOCKBACK_TILES,
   KAMEHAMEHA_MAX_RANGE_TILES,
   KAMEHAMEHA_MIN_RANGE_TILES,
+  CHAT_PROXIMITY_TILES,
+  CHAT_CHANCE,
+  CHAT_DURATION_MIN_SEC,
+  CHAT_DURATION_MAX_SEC,
+  CHAT_EMOJI_INTERVAL_SEC,
+  CHAT_EMOJIS,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture, FloorColor } from '../types.js'
 import { createCharacter, updateCharacter } from './characters.js'
@@ -1053,9 +1059,66 @@ export class OfficeState {
       this.initiateKamehameha(ch, target)
     }
 
+    // Chat encounters: idle characters on adjacent tiles start chatting (Sims-style)
+    for (const ch of this.characters.values()) {
+      if (ch.state !== CharacterState.IDLE || ch.isActive || ch.isSubagent || ch.matrixEffect) continue
+      if (Math.random() > CHAT_CHANCE * dt) continue
+      // Find an adjacent idle character
+      for (const other of this.characters.values()) {
+        if (other.id === ch.id) continue
+        if (other.state !== CharacterState.IDLE || other.isActive || other.isSubagent || other.matrixEffect) continue
+        const dist = Math.abs(other.tileCol - ch.tileCol) + Math.abs(other.tileRow - ch.tileRow)
+        if (dist > CHAT_PROXIMITY_TILES) continue
+        this.startChat(ch, other)
+        break
+      }
+    }
+
     // Remove characters that finished despawn
     for (const id of toDelete) {
       this.characters.delete(id)
+    }
+  }
+
+  /** Start a Sims-style chat between two characters */
+  private startChat(a: Character, b: Character): void {
+    const duration = CHAT_DURATION_MIN_SEC + Math.random() * (CHAT_DURATION_MAX_SEC - CHAT_DURATION_MIN_SEC)
+    const emojiCount = Math.ceil(duration / CHAT_EMOJI_INTERVAL_SEC) + 1
+
+    // Pick random emojis for each — different sequences so it looks like a real conversation
+    const pickEmojis = () => {
+      const emojis: string[] = []
+      for (let i = 0; i < emojiCount; i++) {
+        emojis.push(CHAT_EMOJIS[Math.floor(Math.random() * CHAT_EMOJIS.length)])
+      }
+      return emojis
+    }
+
+    // Face each other
+    const dc = b.tileCol - a.tileCol
+    const dr = b.tileRow - a.tileRow
+    if (Math.abs(dc) >= Math.abs(dr)) {
+      a.dir = dc > 0 ? Direction.RIGHT : Direction.LEFT
+      b.dir = dc > 0 ? Direction.LEFT : Direction.RIGHT
+    } else {
+      a.dir = dr > 0 ? Direction.DOWN : Direction.UP
+      b.dir = dr > 0 ? Direction.UP : Direction.DOWN
+    }
+
+    for (const ch of [a, b]) {
+      ch.state = CharacterState.CHATTING
+      ch.chattingWithId = ch === a ? b.id : a.id
+      ch.chattingTimer = duration
+      ch.chatEmojis = pickEmojis()
+      ch.chatEmojiIndex = 0
+      ch.chatEmojiTimer = CHAT_EMOJI_INTERVAL_SEC
+      ch.path = []
+      ch.moveProgress = 0
+      ch.frame = 0
+      ch.frameTimer = 0
+      // Clear any existing interact emoji
+      ch.interactEmoji = null
+      ch.interactEmojiTimer = 0
     }
   }
 

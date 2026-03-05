@@ -41,6 +41,7 @@ export const CharacterState = {
   BATHROOM: 'bathroom',
   KAMEHAMEHA: 'kamehameha',
   KNOCKED: 'knocked',
+  CHATTING: 'chatting',
 } as const
 export type CharacterState = (typeof CharacterState)[keyof typeof CharacterState]
 
@@ -246,4 +247,14 @@ export interface Character {
   knockbackToX: number
   knockbackToY: number
   knockbackRecoveryTimer: number
+  /** ID of the character we're chatting with, or null */
+  chattingWithId: number | null
+  /** Total remaining chat duration */
+  chattingTimer: number
+  /** Sequence of emojis to show during chat */
+  chatEmojis: string[]
+  /** Current index in chatEmojis array */
+  chatEmojiIndex: number
+  /** Timer for cycling to next emoji */
+  chatEmojiTimer: number
 }

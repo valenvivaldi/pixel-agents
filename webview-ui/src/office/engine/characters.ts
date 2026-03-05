@@ -27,6 +27,7 @@ import {
   KAMEHAMEHA_RECOVERY_SEC,
   SEAT_REST_MIN_SEC,
   SEAT_REST_MAX_SEC,
+  CHAT_EMOJI_INTERVAL_SEC,
 } from '../../constants.js'
 import { FURNITURE_INTERACT_EMOJIS } from '../sprites/spriteData.js'
 import type { PlacedFurniture } from '../types.js'
@@ -113,6 +114,11 @@ export function createCharacter(
     knockbackToX: 0,
     knockbackToY: 0,
     knockbackRecoveryTimer: 0,
+    chattingWithId: null,
+    chattingTimer: 0,
+    chatEmojis: [],
+    chatEmojiIndex: 0,
+    chatEmojiTimer: 0,
   }
 }
 
@@ -414,6 +420,34 @@ export function updateCharacter(
       break
     }
 
+    case CharacterState.CHATTING: {
+      if (ch.isActive) {
+        // Agent started working — end chat
+        ch.chattingWithId = null
+        ch.chatEmojis = []
+        ch.state = CharacterState.IDLE
+        ch.wanderTimer = 0
+        break
+      }
+      ch.chattingTimer -= dt
+      ch.chatEmojiTimer -= dt
+      if (ch.chatEmojiTimer <= 0) {
+        ch.chatEmojiIndex = (ch.chatEmojiIndex + 1) % ch.chatEmojis.length
+        ch.chatEmojiTimer = CHAT_EMOJI_INTERVAL_SEC
+      }
+      if (ch.chattingTimer <= 0) {
+        ch.chattingWithId = null
+        ch.chatEmojis = []
+        ch.interactEmoji = '🙌'
+        ch.interactEmojiTimer = INTERACT_EMOJI_DURATION_SEC
+        ch.state = CharacterState.IDLE
+        ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+        ch.frame = 0
+        ch.frameTimer = 0
+      }
+      break
+    }
+
     case CharacterState.WALK: {
       // Walk animation — subagents animate faster (kids running)
       const walkFrameDur = ch.isSubagent ? SUBAGENT_WALK_FRAME_DURATION_SEC : WALK_FRAME_DURATION_SEC
@@ -580,6 +614,7 @@ export function getCharacterSprite(ch: Character, sprites: CharacterSprites): Sp
     case CharacterState.IDLE:
     case CharacterState.BATHROOM:
     case CharacterState.KNOCKED:
+    case CharacterState.CHATTING:
       return sprites.walk[ch.dir][1]
     default:
       return sprites.walk[ch.dir][1]

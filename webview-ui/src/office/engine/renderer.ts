@@ -747,6 +747,54 @@ export function renderToolBubbles(
   }
 }
 
+// ── Chat bubbles (Sims-style) ──────────────────────────────────
+
+export function renderChatBubbles(
+  ctx: CanvasRenderingContext2D,
+  characters: Character[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  for (const ch of characters) {
+    if (ch.state !== CharacterState.CHATTING || ch.chatEmojis.length === 0) continue
+
+    const emoji = ch.chatEmojis[ch.chatEmojiIndex % ch.chatEmojis.length]
+    const fontSize = TOOL_EMOJI_SIZE_PX * zoom
+    const pad = TOOL_EMOJI_PADDING_PX * zoom
+    const boxSize = fontSize + pad * 2
+
+    const bx = Math.round(offsetX + ch.x * zoom - boxSize / 2)
+    const by = Math.round(offsetY + (ch.y - BUBBLE_VERTICAL_OFFSET_PX) * zoom - boxSize - 1 * zoom)
+
+    // Background bubble
+    ctx.fillStyle = TOOL_EMOJI_BG
+    ctx.fillRect(bx, by, boxSize, boxSize)
+    ctx.strokeStyle = TOOL_EMOJI_BORDER
+    ctx.lineWidth = 1
+    ctx.strokeRect(bx + 0.5, by + 0.5, boxSize - 1, boxSize - 1)
+
+    // Tail
+    const tailX = bx + boxSize / 2
+    const tailY = by + boxSize
+    const tailW = 2 * zoom
+    ctx.fillStyle = TOOL_EMOJI_BG
+    ctx.beginPath()
+    ctx.moveTo(tailX - tailW, tailY)
+    ctx.lineTo(tailX + tailW, tailY)
+    ctx.lineTo(tailX, tailY + tailW)
+    ctx.closePath()
+    ctx.fill()
+
+    // Emoji text
+    ctx.font = `${fontSize}px serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(emoji, bx + boxSize / 2, by + boxSize / 2)
+  }
+}
+
 // ── Task progress badges ────────────────────────────────────────
 
 export function renderTaskBadges(
@@ -1001,6 +1049,9 @@ export function renderFrame(
 
   // Interaction emoji bubbles (when not showing speech bubbles)
   renderInteractEmojis(ctx, characters, offsetX, offsetY, zoom)
+
+  // Chat bubbles (Sims-style conversation emojis)
+  renderChatBubbles(ctx, characters, offsetX, offsetY, zoom)
 
   // Task progress badges (above-right of characters)
   renderTaskBadges(ctx, characters, offsetX, offsetY, zoom)

@@ -167,6 +167,14 @@ export const CHARACTER_HIT_HEIGHT = 24
 export const TOOL_OVERLAY_VERTICAL_OFFSET = 32
 export const PULSE_ANIMATION_DURATION_SEC = 1.5
 
+// ── Chat Encounter ───────────────────────────────────────────
+export const CHAT_PROXIMITY_TILES = 1
+export const CHAT_CHANCE = 0.3
+export const CHAT_DURATION_MIN_SEC = 3.0
+export const CHAT_DURATION_MAX_SEC = 7.0
+export const CHAT_EMOJI_INTERVAL_SEC = 1.2
+export const CHAT_EMOJIS = ['😄', '😂', '🤔', '💡', '👋', '🙌', '😮', '🎉', '👍', '💬', '🤝', '😎']
+
 // ── Bathroom Behavior ─────────────────────────────────────────
 export const BATHROOM_USE_MIN_SEC = 5.0
 export const BATHROOM_USE_MAX_SEC = 12.0
