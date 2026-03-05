@@ -13,6 +13,7 @@ import {
   VENDING_MACHINE_SPRITE,
   COFFEE_TABLE_SPRITE,
   CHESS_TABLE_SPRITE,
+  PORTA_POTTY_SPRITE,
 } from '../sprites/spriteData.js'
 
 export interface LoadedAssetData {
@@ -55,6 +56,7 @@ export const FURNITURE_CATALOG: CatalogEntryWithCategory[] = [
   { type: FurnitureType.VENDING_MACHINE, label: 'Vending Machine', footprintW: 1, footprintH: 2, sprite: VENDING_MACHINE_SPRITE, isDesk: false, category: 'misc' },
   { type: FurnitureType.COFFEE_TABLE, label: 'Coffee Table', footprintW: 1, footprintH: 1, sprite: COFFEE_TABLE_SPRITE, isDesk: false, category: 'misc' },
   { type: FurnitureType.CHESS_TABLE, label: 'Chess Table', footprintW: 1, footprintH: 1, sprite: CHESS_TABLE_SPRITE, isDesk: false, category: 'misc' },
+  { type: FurnitureType.PORTA_POTTY, label: 'Porta-Potty', footprintW: 1, footprintH: 1, sprite: PORTA_POTTY_SPRITE, isDesk: false, category: 'misc' },
 
 ]
 

@@ -33,13 +33,14 @@ export async function launchNewTerminal(
 	persistAgents: () => void,
 	folderPath?: string,
 ): Promise<void> {
+	const homedir = os.homedir();
+	const cwd = folderPath || homedir;
 	const folders = vscode.workspace.workspaceFolders;
-	const cwd = folderPath || folders?.[0]?.uri.fsPath;
 	const isMultiRoot = !!(folders && folders.length > 1);
 	const idx = nextTerminalIndexRef.current++;
 	const terminal = vscode.window.createTerminal({
 		name: `${TERMINAL_NAME_PREFIX} #${idx}`,
-		cwd,
+		cwd: homedir,
 	});
 	terminal.show();
 

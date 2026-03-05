@@ -7,6 +7,34 @@ const _ = '' // transparent
 
 // ── Furniture Sprites ───────────────────────────────────────────
 
+/** Porta-potty: 16x16 pixels (1x1 tile) — front-facing chemical toilet */
+export const PORTA_POTTY_SPRITE: SpriteData = (() => {
+  const B = '#3B7DD8'  // blue body
+  const D = '#2A5BA0'  // dark blue (edges)
+  const R = '#4A8DE8'  // roof (lighter blue)
+  const L = '#6AADFF'  // light blue (door panel)
+  const H = '#C0C0C0'  // handle (silver)
+  const K = '#1E3F6E'  // very dark (base/frame)
+  return [
+    [_, _, _, R, R, R, R, R, R, R, R, R, R, _, _, _],
+    [_, _, K, D, D, D, D, D, D, D, D, D, D, K, _, _],
+    [_, _, D, B, B, B, B, B, B, B, B, B, B, D, _, _],
+    [_, _, D, B, K, K, B, B, B, B, K, K, B, D, _, _],
+    [_, _, D, B, B, B, B, B, B, B, B, B, B, D, _, _],
+    [_, _, D, B, D, D, D, D, D, D, D, D, B, D, _, _],
+    [_, _, D, B, D, L, L, L, L, L, L, D, B, D, _, _],
+    [_, _, D, B, D, L, L, L, L, L, L, D, B, D, _, _],
+    [_, _, D, B, D, L, L, L, L, H, L, D, B, D, _, _],
+    [_, _, D, B, D, L, L, L, L, L, L, D, B, D, _, _],
+    [_, _, D, B, D, D, D, D, D, D, D, D, B, D, _, _],
+    [_, _, D, B, B, B, B, B, B, B, B, B, B, D, _, _],
+    [_, _, K, D, D, D, D, D, D, D, D, D, D, K, _, _],
+    [_, _, K, K, K, K, K, K, K, K, K, K, K, K, _, _],
+    [_, _, _, K, K, _, _, _, _, _, _, K, K, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
 /** Square desk: 32x32 pixels (2x2 tiles) — top-down wood surface */
 export const DESK_SQUARE_SPRITE: SpriteData = (() => {
   const W = '#8B6914' // wood edge

@@ -19,6 +19,14 @@ import {
   SUBAGENT_WALK_FRAME_DURATION_SEC,
   SUBAGENT_PAUSE_MIN_SEC,
   SUBAGENT_PAUSE_MAX_SEC,
+  BATHROOM_USE_MIN_SEC,
+  BATHROOM_USE_MAX_SEC,
+  BATHROOM_CHANCE,
+  KAMEHAMEHA_FIRE_SEC,
+  KAMEHAMEHA_KNOCKBACK_DURATION_SEC,
+  KAMEHAMEHA_RECOVERY_SEC,
+  SEAT_REST_MIN_SEC,
+  SEAT_REST_MAX_SEC,
 } from '../../constants.js'
 import { FURNITURE_INTERACT_EMOJIS } from '../sprites/spriteData.js'
 import type { PlacedFurniture } from '../types.js'
@@ -94,6 +102,17 @@ export function createCharacter(
     interactTarget: null,
     interactEmoji: null,
     interactEmojiTimer: 0,
+    bathroomTimer: 0,
+    bathroomTarget: null,
+    kamehamehaTimer: 0,
+    kamehamehaPhase: null,
+    kamehamehaTargetId: null,
+    knockbackProgress: 0,
+    knockbackFromX: 0,
+    knockbackFromY: 0,
+    knockbackToX: 0,
+    knockbackToY: 0,
+    knockbackRecoveryTimer: 0,
   }
 }
 
@@ -160,6 +179,7 @@ export function updateCharacter(
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
   furniture?: PlacedFurniture[],
+  bathroomTiles?: Array<{ col: number; row: number; faceDir: Direction }>,
 ): void {
   ch.frameTimer += dt
 
@@ -288,6 +308,22 @@ export function updateCharacter(
             }
           }
         }
+        // Maybe go to the bathroom
+        if (!didInteract && bathroomTiles && bathroomTiles.length > 0 && Math.random() < BATHROOM_CHANCE) {
+          const target = bathroomTiles[Math.floor(Math.random() * bathroomTiles.length)]
+          const path = findPath(ch.tileCol, ch.tileRow, target.col, target.row, tileMap, blockedTiles)
+          if (path.length > 0) {
+            ch.path = path
+            ch.moveProgress = 0
+            ch.state = CharacterState.WALK
+            ch.frame = 0
+            ch.frameTimer = 0
+            ch.bathroomTarget = { faceDir: target.faceDir }
+            ch.wanderCount++
+            ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+            didInteract = true
+          }
+        }
         if (!didInteract && walkableTiles.length > 0) {
           const target = walkableTiles[Math.floor(Math.random() * walkableTiles.length)]
           const path = findPath(ch.tileCol, ch.tileRow, target.col, target.row, tileMap, blockedTiles)
@@ -301,6 +337,79 @@ export function updateCharacter(
           }
         }
         ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+      }
+      break
+    }
+
+    case CharacterState.BATHROOM: {
+      if (ch.isActive) {
+        ch.state = CharacterState.IDLE
+        ch.bathroomTimer = 0
+        break
+      }
+      ch.bathroomTimer -= dt
+      if (ch.bathroomTimer <= 0) {
+        ch.state = CharacterState.IDLE
+        ch.bathroomTimer = 0
+        ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+      }
+      break
+    }
+
+    case CharacterState.KAMEHAMEHA: {
+      if (ch.isActive) {
+        // Cancel if agent starts working
+        ch.kamehamehaPhase = null
+        ch.kamehamehaTargetId = null
+        ch.state = CharacterState.IDLE
+        break
+      }
+      ch.kamehamehaTimer -= dt
+      if (ch.kamehamehaTimer <= 0) {
+        if (ch.kamehamehaPhase === 'charge') {
+          ch.kamehamehaPhase = 'fire'
+          ch.kamehamehaTimer = KAMEHAMEHA_FIRE_SEC
+        } else {
+          // Fire complete
+          ch.kamehamehaPhase = null
+          ch.kamehamehaTargetId = null
+          ch.state = CharacterState.IDLE
+          ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+        }
+      }
+      // Reuse typing animation for "power up" hands
+      if (ch.frameTimer >= TYPE_FRAME_DURATION_SEC) {
+        ch.frameTimer -= TYPE_FRAME_DURATION_SEC
+        ch.frame = (ch.frame + 1) % 2
+      }
+      break
+    }
+
+    case CharacterState.KNOCKED: {
+      if (ch.knockbackProgress < 1) {
+        // Sliding phase
+        ch.knockbackProgress += dt / KAMEHAMEHA_KNOCKBACK_DURATION_SEC
+        if (ch.knockbackProgress >= 1) {
+          ch.knockbackProgress = 1
+          ch.x = ch.knockbackToX
+          ch.y = ch.knockbackToY
+          ch.tileCol = Math.round((ch.knockbackToX - TILE_SIZE / 2) / TILE_SIZE)
+          ch.tileRow = Math.round((ch.knockbackToY - TILE_SIZE / 2) / TILE_SIZE)
+          ch.knockbackRecoveryTimer = KAMEHAMEHA_RECOVERY_SEC
+        } else {
+          const t = ch.knockbackProgress
+          ch.x = ch.knockbackFromX + (ch.knockbackToX - ch.knockbackFromX) * t
+          ch.y = ch.knockbackFromY + (ch.knockbackToY - ch.knockbackFromY) * t
+        }
+      } else {
+        // Recovery phase (lying on floor)
+        ch.knockbackRecoveryTimer -= dt
+        if (ch.knockbackRecoveryTimer <= 0 || ch.isActive) {
+          ch.state = CharacterState.IDLE
+          ch.frame = 0
+          ch.frameTimer = 0
+          ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+        }
       }
       break
     }
@@ -329,6 +438,7 @@ export function updateCharacter(
         }
 
         if (ch.isActive) {
+          ch.bathroomTarget = null // cancel bathroom trip if became active
           if (!ch.seatId) {
             // No seat — type in place
             ch.state = CharacterState.TYPE
@@ -374,6 +484,36 @@ export function updateCharacter(
             ch.frameTimer = 0
             break
           }
+          // Check if arrived at a bathroom tile
+          if (ch.bathroomTarget) {
+            ch.state = CharacterState.BATHROOM
+            ch.dir = ch.bathroomTarget.faceDir
+            ch.bathroomTimer = randomRange(BATHROOM_USE_MIN_SEC, BATHROOM_USE_MAX_SEC)
+            ch.bathroomTarget = null
+            ch.frame = 0
+            ch.frameTimer = 0
+            break
+          }
+          // Check if arrived at assigned seat — sit down for a rest before wandering again
+          if (ch.seatId) {
+            const seat = seats.get(ch.seatId)
+            if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
+              ch.state = CharacterState.TYPE
+              ch.dir = seat.facingDir
+              // seatTimer < 0 is a sentinel from setAgentActive(false) meaning
+              // "turn just ended" — skip the long rest so idle transition is immediate
+              if (ch.seatTimer < 0) {
+                ch.seatTimer = 0
+              } else {
+                ch.seatTimer = randomRange(SEAT_REST_MIN_SEC, SEAT_REST_MAX_SEC)
+              }
+              ch.wanderCount = 0
+              ch.wanderLimit = randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX)
+              ch.frame = 0
+              ch.frameTimer = 0
+              break
+            }
+          }
           ch.state = CharacterState.IDLE
           ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
         }
@@ -405,8 +545,9 @@ export function updateCharacter(
         ch.moveProgress = 0
       }
 
-      // If became active while wandering, repath to seat (not subagents)
-      if (!ch.isSubagent && ch.isActive && ch.seatId) {
+      // If became active while wandering, cancel bathroom and repath to seat
+      if (ch.isActive && ch.seatId) {
+        ch.bathroomTarget = null
         const seat = seats.get(ch.seatId)
         if (seat) {
           const lastStep = ch.path[ch.path.length - 1]
@@ -434,7 +575,11 @@ export function getCharacterSprite(ch: Character, sprites: CharacterSprites): Sp
       return sprites.typing[ch.dir][ch.frame % 2]
     case CharacterState.WALK:
       return sprites.walk[ch.dir][ch.frame % 4]
+    case CharacterState.KAMEHAMEHA:
+      return sprites.typing[ch.dir][ch.frame % 2]
     case CharacterState.IDLE:
+    case CharacterState.BATHROOM:
+    case CharacterState.KNOCKED:
       return sprites.walk[ch.dir][1]
     default:
       return sprites.walk[ch.dir][1]

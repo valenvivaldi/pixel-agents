@@ -166,3 +166,32 @@ export const CHARACTER_HIT_HALF_WIDTH = 8
 export const CHARACTER_HIT_HEIGHT = 24
 export const TOOL_OVERLAY_VERTICAL_OFFSET = 32
 export const PULSE_ANIMATION_DURATION_SEC = 1.5
+
+// ── Bathroom Behavior ─────────────────────────────────────────
+export const BATHROOM_USE_MIN_SEC = 5.0
+export const BATHROOM_USE_MAX_SEC = 12.0
+export const BATHROOM_CHANCE = 0.15
+
+// ── Kamehameha ────────────────────────────────────────────────
+export const KAMEHAMEHA_CHANCE_PER_SEC = 0.01
+export const KAMEHAMEHA_CHARGE_SEC = 1.2
+export const KAMEHAMEHA_FIRE_SEC = 0.6
+export const KAMEHAMEHA_KNOCKBACK_TILES = 3
+export const KAMEHAMEHA_KNOCKBACK_DURATION_SEC = 0.3
+export const KAMEHAMEHA_RECOVERY_SEC = 1.0
+export const KAMEHAMEHA_MAX_RANGE_TILES = 8
+export const KAMEHAMEHA_MIN_RANGE_TILES = 2
+export const KAMEHAMEHA_BEAM_COLOR = '#66ccff'
+export const KAMEHAMEHA_BEAM_CORE_COLOR = '#ffffff'
+export const KAMEHAMEHA_BEAM_WIDTH_PX = 4
+export const KAMEHAMEHA_BEAM_CORE_WIDTH_PX = 2
+export const KAMEHAMEHA_CHARGE_FREQ_START_HZ = 80
+export const KAMEHAMEHA_CHARGE_FREQ_END_HZ = 400
+export const KAMEHAMEHA_CHARGE_VOLUME = 0.06
+export const KAMEHAMEHA_CHARGE_VOLUME_END = 0.12
+export const KAMEHAMEHA_BLAST_FREQ_START_HZ = 300
+export const KAMEHAMEHA_BLAST_FREQ_END_HZ = 150
+export const KAMEHAMEHA_BLAST_VOLUME = 0.12
+export const KAMEHAMEHA_BLAST2_FREQ_START_HZ = 150
+export const KAMEHAMEHA_BLAST2_FREQ_END_HZ = 80
+export const KAMEHAMEHA_BLAST2_VOLUME = 0.06

@@ -9,7 +9,7 @@ import { CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_SNAP_THRESHOLD, ZOOM_MIN, ZOOM_MAX, Z
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js'
 import { canPlaceFurniture, getWallPlacementRow } from '../editor/editorActions.js'
 import { vscode } from '../../vscodeApi.js'
-import { unlockAudio } from '../../notificationSound.js'
+import { unlockAudio, playKamehamehaSound } from '../../notificationSound.js'
 
 interface OfficeCanvasProps {
   officeState: OfficeState
@@ -86,6 +86,8 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
     if (containerRef.current) {
       observer.observe(containerRef.current)
     }
+
+    officeState.onKamehameha = () => { playKamehamehaSound() }
 
     const stop = startGameLoop(canvas, {
       update: (dt) => {

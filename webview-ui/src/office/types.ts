@@ -38,6 +38,9 @@ export const CharacterState = {
   IDLE: 'idle',
   WALK: 'walk',
   TYPE: 'type',
+  BATHROOM: 'bathroom',
+  KAMEHAMEHA: 'kamehameha',
+  KNOCKED: 'knocked',
 } as const
 export type CharacterState = (typeof CharacterState)[keyof typeof CharacterState]
 
@@ -101,6 +104,7 @@ export const FurnitureType = {
   VENDING_MACHINE: 'vending_machine',
   COFFEE_TABLE: 'coffee_table',
   CHESS_TABLE: 'chess_table',
+  PORTA_POTTY: 'porta_potty',
 } as const
 export type FurnitureType = (typeof FurnitureType)[keyof typeof FurnitureType]
 
@@ -227,4 +231,19 @@ export interface Character {
   interactEmoji: string | null
   /** Timer for interaction emoji display */
   interactEmojiTimer: number
+  /** Countdown while using the bathroom (in seconds) */
+  bathroomTimer: number
+  /** When walking to a bathroom, stores the direction to face; null otherwise */
+  bathroomTarget: { faceDir: Direction } | null
+  /** Kamehameha attacker state */
+  kamehamehaTimer: number
+  kamehamehaPhase: 'charge' | 'fire' | null
+  kamehamehaTargetId: number | null
+  /** Knockback victim state */
+  knockbackProgress: number
+  knockbackFromX: number
+  knockbackFromY: number
+  knockbackToX: number
+  knockbackToY: number
+  knockbackRecoveryTimer: number
 }

@@ -34,7 +34,8 @@ export function formatToolStatus(toolName: string, input: Record<string, unknown
 		case 'WebSearch': return 'Searching the web';
 		case 'Agent':
 		case 'Task': {
-			const desc = typeof input.description === 'string' ? input.description : '';
+			const desc = typeof input.description === 'string' ? input.description
+				: typeof input.prompt === 'string' ? input.prompt : '';
 			return desc ? `Subtask: ${desc.length > TASK_DESCRIPTION_DISPLAY_MAX_LENGTH ? desc.slice(0, TASK_DESCRIPTION_DISPLAY_MAX_LENGTH) + '\u2026' : desc}` : 'Running subtask';
 		}
 		case 'TaskCreate': return 'Creating task';

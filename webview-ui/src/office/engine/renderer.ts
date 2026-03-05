@@ -7,6 +7,10 @@ import { renderMatrixEffect } from './matrixEffect.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
 import { hasWallSprites, getWallInstances, wallColorToHex } from '../wallTiles.js'
 import {
+  KAMEHAMEHA_BEAM_COLOR,
+  KAMEHAMEHA_BEAM_CORE_COLOR,
+  KAMEHAMEHA_BEAM_WIDTH_PX,
+  KAMEHAMEHA_BEAM_CORE_WIDTH_PX,
   TASK_BADGE_OFFSET_X_PX,
   TASK_BADGE_OFFSET_Y_PX,
   TASK_BADGE_SEG_WIDTH_PX,
@@ -147,6 +151,8 @@ export function renderScene(
 
   // Characters
   for (const ch of characters) {
+    // Skip characters in bathroom (hidden inside porta-potty)
+    if (ch.state === CharacterState.BATHROOM) continue
     const sprites = getCharacterSprites(ch.palette, ch.hueShift)
     const spriteData = getCharacterSprite(ch, sprites)
     const cached = getCachedSprite(spriteData, zoom)
@@ -519,6 +525,57 @@ export function renderRotateButton(
   return { cx, cy, radius }
 }
 
+// ── Kamehameha beams ────────────────────────────────────────────
+
+export function renderKamehamehaBeams(
+  ctx: CanvasRenderingContext2D,
+  characters: Character[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  for (const ch of characters) {
+    if (ch.state !== CharacterState.KAMEHAMEHA || ch.kamehamehaPhase !== 'fire') continue
+    if (ch.kamehamehaTargetId === null) continue
+
+    // Find the target character
+    const target = characters.find((c) => c.id === ch.kamehamehaTargetId)
+    if (!target) continue
+
+    const fromX = Math.round(offsetX + ch.x * zoom)
+    const fromY = Math.round(offsetY + (ch.y - 8) * zoom) // shoot from chest height
+    const toX = Math.round(offsetX + target.x * zoom)
+    const toY = Math.round(offsetY + (target.y - 4) * zoom)
+
+    ctx.save()
+
+    // Outer glow beam
+    ctx.strokeStyle = KAMEHAMEHA_BEAM_COLOR
+    ctx.lineWidth = KAMEHAMEHA_BEAM_WIDTH_PX * zoom
+    ctx.lineCap = 'round'
+    ctx.globalAlpha = 0.7
+    ctx.shadowColor = KAMEHAMEHA_BEAM_COLOR
+    ctx.shadowBlur = 6 * zoom
+    ctx.beginPath()
+    ctx.moveTo(fromX, fromY)
+    ctx.lineTo(toX, toY)
+    ctx.stroke()
+
+    // Core beam (white center)
+    ctx.strokeStyle = KAMEHAMEHA_BEAM_CORE_COLOR
+    ctx.lineWidth = KAMEHAMEHA_BEAM_CORE_WIDTH_PX * zoom
+    ctx.globalAlpha = 0.9
+    ctx.shadowColor = KAMEHAMEHA_BEAM_CORE_COLOR
+    ctx.shadowBlur = 3 * zoom
+    ctx.beginPath()
+    ctx.moveTo(fromX, fromY)
+    ctx.lineTo(toX, toY)
+    ctx.stroke()
+
+    ctx.restore()
+  }
+}
+
 // ── Speech bubbles ──────────────────────────────────────────────
 
 export function renderBubbles(
@@ -530,6 +587,7 @@ export function renderBubbles(
 ): void {
   for (const ch of characters) {
     if (!ch.bubbleType) continue
+    if (ch.state === CharacterState.BATHROOM) continue
 
     const sprite = ch.bubbleType === 'permission'
       ? BUBBLE_PERMISSION_SPRITE
@@ -700,6 +758,7 @@ export function renderTaskBadges(
 ): void {
   for (const ch of characters) {
     if (!ch.tasks || ch.tasks.length === 0) continue
+    if (ch.state === CharacterState.BATHROOM) continue
 
     const tasks = ch.tasks.slice(0, TASK_BADGE_MAX_SEGMENTS)
     const segW = TASK_BADGE_SEG_WIDTH_PX * zoom
@@ -930,6 +989,9 @@ export function renderFrame(
   const selectedId = selection?.selectedAgentId ?? null
   const hoveredId = selection?.hoveredAgentId ?? null
   renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId, seats)
+
+  // Kamehameha beams (on top of characters, below bubbles)
+  renderKamehamehaBeams(ctx, characters, offsetX, offsetY, zoom)
 
   // Speech bubbles (always on top of characters)
   renderBubbles(ctx, characters, offsetX, offsetY, zoom)

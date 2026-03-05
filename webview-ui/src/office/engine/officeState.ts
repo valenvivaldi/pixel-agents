@@ -17,6 +17,11 @@ import {
   ROOM_GAP,
   ROOM_DEFAULT_FLOOR_PATTERN,
   DEFAULT_WALL_COLOR,
+  KAMEHAMEHA_CHANCE_PER_SEC,
+  KAMEHAMEHA_CHARGE_SEC,
+  KAMEHAMEHA_KNOCKBACK_TILES,
+  KAMEHAMEHA_MAX_RANGE_TILES,
+  KAMEHAMEHA_MIN_RANGE_TILES,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture, FloorColor } from '../types.js'
 import { createCharacter, updateCharacter } from './characters.js'
@@ -39,6 +44,8 @@ export class OfficeState {
   blockedTiles: Set<string>
   furniture: FurnitureInstance[]
   walkableTiles: Array<{ col: number; row: number }>
+  /** Walkable tiles adjacent to porta-potties, with direction to face the potty */
+  bathroomTiles: Array<{ col: number; row: number; faceDir: Direction }> = []
   characters: Map<number, Character> = new Map()
   selectedAgentId: number | null = null
   cameraFollowId: number | null = null
@@ -61,6 +68,8 @@ export class OfficeState {
   knownProjects: Set<string> = new Set()
   /** Callback to save layout when rooms are generated */
   onLayoutChanged?: (layout: OfficeLayout) => void
+  /** Callback when a kamehameha is initiated (to play sound) */
+  onKamehameha?: () => void
 
   constructor(layout?: OfficeLayout) {
     this.layout = layout || createDefaultLayout()
@@ -69,6 +78,7 @@ export class OfficeState {
     this.blockedTiles = getBlockedTiles(this.layout.furniture)
     this.furniture = layoutToFurnitureInstances(this.layout.furniture)
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
+    this.computeBathroomTiles()
     this.rebuildZoneData()
   }
 
@@ -81,6 +91,7 @@ export class OfficeState {
     this.blockedTiles = getBlockedTiles(layout.furniture)
     this.rebuildFurnitureInstances()
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
+    this.computeBathroomTiles()
     this.rebuildZoneData()
 
     // Shift character positions when grid expands left/up
@@ -186,6 +197,27 @@ export class OfficeState {
           this.zoneWalkableTiles.set(zone, arr)
         }
         arr.push(tile)
+      }
+    }
+  }
+
+  /** Compute walkable tiles adjacent to porta-potties for bathroom behavior */
+  private computeBathroomTiles(): void {
+    this.bathroomTiles = []
+    for (const item of this.layout.furniture) {
+      if (item.type !== FurnitureType.PORTA_POTTY) continue
+      const adj: Array<{ dc: number; dr: number; dir: Direction }> = [
+        { dc: -1, dr: 0, dir: Direction.RIGHT },
+        { dc: 1, dr: 0, dir: Direction.LEFT },
+        { dc: 0, dr: -1, dir: Direction.DOWN },
+        { dc: 0, dr: 1, dir: Direction.UP },
+      ]
+      for (const { dc, dr, dir } of adj) {
+        const nc = item.col + dc
+        const nr = item.row + dr
+        if (isWalkable(nc, nr, this.tileMap, this.blockedTiles)) {
+          this.bathroomTiles.push({ col: nc, row: nr, faceDir: dir })
+        }
       }
     }
   }
@@ -406,6 +438,7 @@ export class OfficeState {
     this.blockedTiles = getBlockedTiles(layout.furniture)
     this.rebuildFurnitureInstances()
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
+    this.computeBathroomTiles()
     this.rebuildZoneData()
 
     // Re-assign existing seats
@@ -989,7 +1022,7 @@ export class OfficeState {
       // Use zone-filtered walkable tiles for wander target selection
       const wanderTiles = this.getAgentWalkableTiles(ch)
       this.withOwnSeatUnblocked(ch, () =>
-        updateCharacter(ch, dt, wanderTiles, this.seats, this.tileMap, this.blockedTiles, this.layout.furniture)
+        updateCharacter(ch, dt, wanderTiles, this.seats, this.tileMap, this.blockedTiles, this.layout.furniture, this.bathroomTiles)
       )
 
       // Tick bubble timer for waiting bubbles
@@ -1001,10 +1034,114 @@ export class OfficeState {
         }
       }
     }
+    // Kamehameha: check for fire phase transitions → start knockback on targets
+    for (const ch of this.characters.values()) {
+      if (ch.state !== CharacterState.KAMEHAMEHA || ch.kamehamehaPhase !== 'fire') continue
+      if (ch.kamehamehaTargetId === null) continue
+      const target = this.characters.get(ch.kamehamehaTargetId)
+      if (!target || target.state === CharacterState.KNOCKED) continue
+      this.startKnockback(ch, target)
+    }
+
+    // Kamehameha: random trigger for idle characters
+    for (const ch of this.characters.values()) {
+      if (ch.state !== CharacterState.IDLE) continue
+      if (ch.isActive || ch.isSubagent || ch.matrixEffect) continue
+      if (Math.random() > KAMEHAMEHA_CHANCE_PER_SEC * dt) continue
+      const target = this.findKamehamehaTarget(ch)
+      if (!target) continue
+      this.initiateKamehameha(ch, target)
+    }
+
     // Remove characters that finished despawn
     for (const id of toDelete) {
       this.characters.delete(id)
     }
+  }
+
+  /** Find a valid kamehameha target: another idle non-active character within range */
+  private findKamehamehaTarget(attacker: Character): Character | null {
+    const candidates: Character[] = []
+    for (const ch of this.characters.values()) {
+      if (ch.id === attacker.id) continue
+      if (ch.state !== CharacterState.IDLE) continue
+      if (ch.isActive || ch.isSubagent || ch.matrixEffect) continue
+      const dist = Math.abs(ch.tileCol - attacker.tileCol) + Math.abs(ch.tileRow - attacker.tileRow)
+      if (dist > KAMEHAMEHA_MAX_RANGE_TILES || dist < KAMEHAMEHA_MIN_RANGE_TILES) continue
+      candidates.push(ch)
+    }
+    if (candidates.length === 0) return null
+    return candidates[Math.floor(Math.random() * candidates.length)]
+  }
+
+  /** Start a kamehameha attack from attacker toward target */
+  private initiateKamehameha(attacker: Character, target: Character): void {
+    attacker.state = CharacterState.KAMEHAMEHA
+    attacker.kamehamehaPhase = 'charge'
+    attacker.kamehamehaTimer = KAMEHAMEHA_CHARGE_SEC
+    attacker.kamehamehaTargetId = target.id
+    attacker.frame = 0
+    attacker.frameTimer = 0
+    attacker.path = []
+    attacker.moveProgress = 0
+
+    // Face the target
+    const dc = target.tileCol - attacker.tileCol
+    const dr = target.tileRow - attacker.tileRow
+    if (Math.abs(dc) >= Math.abs(dr)) {
+      attacker.dir = dc > 0 ? Direction.RIGHT : Direction.LEFT
+    } else {
+      attacker.dir = dr > 0 ? Direction.DOWN : Direction.UP
+    }
+
+    this.onKamehameha?.()
+  }
+
+  /** Apply knockback to the target character */
+  private startKnockback(attacker: Character, target: Character): void {
+    // Knockback direction: from attacker toward target
+    const dc = target.tileCol - attacker.tileCol
+    const dr = target.tileRow - attacker.tileRow
+    let dirCol: number, dirRow: number
+    if (Math.abs(dc) >= Math.abs(dr)) {
+      dirCol = dc > 0 ? 1 : -1
+      dirRow = 0
+    } else {
+      dirCol = 0
+      dirRow = dr > 0 ? 1 : -1
+    }
+
+    // Find farthest walkable tile in knockback direction
+    let destCol = target.tileCol
+    let destRow = target.tileRow
+    for (let i = 1; i <= KAMEHAMEHA_KNOCKBACK_TILES; i++) {
+      const nc = target.tileCol + dirCol * i
+      const nr = target.tileRow + dirRow * i
+      if (isWalkable(nc, nr, this.tileMap, this.blockedTiles)) {
+        destCol = nc
+        destRow = nr
+      } else {
+        break
+      }
+    }
+
+    target.state = CharacterState.KNOCKED
+    target.knockbackFromX = target.x
+    target.knockbackFromY = target.y
+    target.knockbackToX = destCol * TILE_SIZE + TILE_SIZE / 2
+    target.knockbackToY = destRow * TILE_SIZE + TILE_SIZE / 2
+    target.knockbackProgress = 0
+    target.knockbackRecoveryTimer = 0
+    target.frame = 0
+    target.frameTimer = 0
+    target.path = []
+    target.moveProgress = 0
+
+    // Face toward attacker (getting hit)
+    if (dirCol > 0) target.dir = Direction.LEFT
+    else if (dirCol < 0) target.dir = Direction.RIGHT
+    else if (dirRow > 0) target.dir = Direction.UP
+    else target.dir = Direction.DOWN
   }
 
   getCharacters(): Character[] {
@@ -1015,8 +1152,9 @@ export class OfficeState {
   getCharacterAt(worldX: number, worldY: number): number | null {
     const chars = this.getCharacters().sort((a, b) => b.y - a.y)
     for (const ch of chars) {
-      // Skip characters that are despawning
+      // Skip characters that are despawning or in bathroom
       if (ch.matrixEffect === 'despawn') continue
+      if (ch.state === CharacterState.BATHROOM) continue
       // Character sprite is 16x24, anchored bottom-center
       // Apply sitting offset to match visual position
       const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0
