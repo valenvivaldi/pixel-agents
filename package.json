@@ -99,7 +99,8 @@
     "lint": "eslint src",
     "import-tileset": "tsx scripts/import-tileset-cli.ts",
     "electron:dev": "npm run build:webview && cd electron && npm run dev",
-    "electron:build": "npm run build:webview && cd electron && npm run package"
+    "electron:build": "npm run build:webview && cd electron && npm run package",
+    "test:extension": "vitest run --config vitest.extension.config.ts"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
@@ -112,7 +113,8 @@
     "pngjs": "^7.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.54.0"
+    "typescript-eslint": "^8.54.0",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "@types/ws": "^8.18.1",

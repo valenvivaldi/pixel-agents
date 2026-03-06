@@ -19,6 +19,7 @@ import { writeLayoutToFile, readLayoutFromFile, watchLayoutFile } from './layout
 import type { LayoutWatcher } from './layoutPersistence.js';
 import { startExternalScan, stopExternalScan, createExternalScanState } from './externalSessionScanner.js';
 import type { ExternalScanState } from './externalSessionScanner.js';
+import { ChatWatcher, findAgentBySession } from './chatWatcher.js';
 
 export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 	nextAgentId = { current: 1 };
@@ -46,6 +47,9 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 
 	// External session detection
 	externalScanState: ExternalScanState = createExternalScanState();
+
+	// Chat file watcher
+	private chatWatcher: ChatWatcher | null = null;
 
 	constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -266,6 +270,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 					})();
 				}
 				sendExistingAgents(this.agents, this.context, this.webview);
+				// Start chat file watcher
+				this.startChatWatcher();
 				// Sync is handled directly by the webview's SyncManager — no extension middleman
 			} else if (message.type === 'setExternalSessionsEnabled') {
 				const enabled = !!message.enabled;
@@ -425,6 +431,17 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 
 	// Sync is handled directly by the webview's SyncManager
 
+	private startChatWatcher(): void {
+		if (this.chatWatcher) return;
+		this.chatWatcher = new ChatWatcher(ChatWatcher.defaultPath(), (line) => {
+			const agentId = findAgentBySession(this.agents.values(), line.session);
+			if (agentId !== null) {
+				this.webview?.postMessage({ type: 'agentChat', id: agentId, msg: line.msg });
+			}
+		});
+		this.chatWatcher.start();
+	}
+
 	private startLayoutWatcher(): void {
 		if (this.layoutWatcher) return;
 		this.layoutWatcher = watchLayoutFile((layout) => {
@@ -440,6 +457,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			this.jsonlPollTimers, this.persistAgents, this.webview,
 		);
 		// Sync is handled by the webview's SyncManager — no extension disposal needed
+		this.chatWatcher?.dispose();
+		this.chatWatcher = null;
 		this.layoutWatcher?.dispose();
 		this.layoutWatcher = null;
 		for (const id of [...this.agents.keys()]) {
