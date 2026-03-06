@@ -668,7 +668,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
         // Toggle selection: click same agent deselects, different agent selects
         if (officeState.selectedAgentId === hitId) {
           officeState.selectedAgentId = null
-          officeState.cameraFollowId = null
+          officeState.cameraFollowId = officeState.pinnedAgentId
         } else {
           officeState.selectedAgentId = hitId
           officeState.cameraFollowId = hitId
@@ -692,13 +692,13 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
                   // Clicked own seat — send agent back to it
                   officeState.sendToSeat(officeState.selectedAgentId)
                   officeState.selectedAgentId = null
-                  officeState.cameraFollowId = null
+                  officeState.cameraFollowId = officeState.pinnedAgentId
                   return
                 } else if (!seat.assigned) {
                   // Clicked available seat — reassign
                   officeState.reassignSeat(officeState.selectedAgentId, seatId)
                   officeState.selectedAgentId = null
-                  officeState.cameraFollowId = null
+                  officeState.cameraFollowId = officeState.pinnedAgentId
                   // Persist seat assignments (exclude sub-agents)
                   const seats: Record<number, { palette: number; seatId: string | null }> = {}
                   for (const ch of officeState.characters.values()) {
@@ -714,10 +714,23 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
         }
         // Clicked empty space — deselect
         officeState.selectedAgentId = null
-        officeState.cameraFollowId = null
+        officeState.cameraFollowId = officeState.pinnedAgentId
       }
     },
     [officeState, onClick, screenToWorld, screenToTile, isEditMode],
+  )
+
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (isEditMode) return
+      const pos = screenToWorld(e.clientX, e.clientY)
+      if (!pos) return
+      const hitId = officeState.getCharacterAt(pos.worldX, pos.worldY)
+      if (hitId !== null) {
+        officeState.pinAgent(hitId)
+      }
+    },
+    [officeState, screenToWorld, isEditMode],
   )
 
   const handleMouseLeave = useCallback(() => {
@@ -796,6 +809,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         onAuxClick={handleAuxClick}
         onMouseLeave={handleMouseLeave}
         onWheel={handleWheel}

@@ -54,6 +54,8 @@ export class OfficeState {
   characters: Map<number, Character> = new Map()
   selectedAgentId: number | null = null
   cameraFollowId: number | null = null
+  /** Pinned agent: camera always returns here after interruptions */
+  pinnedAgentId: number | null = null
   hoveredAgentId: number | null = null
   hoveredTile: { col: number; row: number } | null = null
   /** Maps "parentId:toolId" → sub-agent character ID (negative) */
@@ -982,24 +984,31 @@ export class OfficeState {
 
   /** Chat zoom popup: shows zoomed view of character when they post a chat message */
   chatZoomAgentId: number | null = null
-  private preChatFollowId: number | null = null
 
   showChatMessage(agentId: number, msg: string): void {
     const ch = this.characters.get(agentId)
     if (!ch) return
     ch.chatMessage = msg
     ch.chatMessageTimer = CHAT_MESSAGE_DURATION_SEC
-    // Save current follow before overriding for zoom capture
-    this.preChatFollowId = this.cameraFollowId
     this.chatZoomAgentId = agentId
     this.cameraFollowId = agentId
   }
 
   dismissChatZoom(): void {
-    // Restore previous camera follow
-    this.cameraFollowId = this.preChatFollowId
-    this.preChatFollowId = null
     this.chatZoomAgentId = null
+    // Return camera to pinned agent, or stop following
+    this.cameraFollowId = this.pinnedAgentId
+  }
+
+  pinAgent(agentId: number | null): void {
+    if (this.pinnedAgentId === agentId) {
+      // Unpin
+      this.pinnedAgentId = null
+      this.cameraFollowId = null
+    } else {
+      this.pinnedAgentId = agentId
+      this.cameraFollowId = agentId
+    }
   }
 
   update(dt: number): void {
