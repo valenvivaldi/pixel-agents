@@ -414,6 +414,9 @@ export class OfficeState {
 
       // Try to use catalog desk if available, otherwise use basic furniture type
       furniture.push({ uid: deskUid, type: FurnitureType.DESK, col: deskCol, row: deskRow })
+      // Keyboard on the desk surface (bottom-left tile of 2x2 desk)
+      const keyboardUid = `room-${projectId}-keyboard`
+      furniture.push({ uid: keyboardUid, type: FurnitureType.KEYBOARD, col: deskCol, row: deskRow + 1 })
       // Chair below the desk (facing up toward desk)
       const chairCol = deskCol
       const chairRow = deskRow + 2 < roomRow + roomH - 1 ? deskRow + 2 : deskRow - 1
