@@ -177,7 +177,7 @@ export const CHAT_EMOJIS = ['😄', '😂', '🤔', '💡', '👋', '🙌', '�
 export const CHAT_MESSAGE_DURATION_SEC = 5
 
 // ── Agent Chat Bubbles ─────────────────────────────────────
-export const CHAT_BUBBLE_MAX_WIDTH_PX = 120
+export const CHAT_BUBBLE_MAX_WIDTH_PX = 112
 export const CHAT_BUBBLE_PADDING_PX = 4
 export const CHAT_BUBBLE_FONT_SIZE_PX = 8
 export const CHAT_BUBBLE_BG = 'rgba(255, 255, 255, 0.95)'

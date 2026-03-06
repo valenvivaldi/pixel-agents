@@ -526,6 +526,7 @@ export function useExtensionMessages(
             name: `Agent ${ch.id}`,
             status: ch.isActive ? 'active' : (ch.bubbleType === 'permission' ? 'permission' : (ch.bubbleType === 'waiting' ? 'waiting' : 'idle')),
             activeTool: ch.currentTool || undefined,
+            seatId: ch.seatId || undefined,
             appearance: { palette: ch.palette, hueShift: ch.hueShift },
             x: ch.x,
             y: ch.y,
@@ -541,6 +542,25 @@ export function useExtensionMessages(
       },
       onChat: (clientId, agentId, _userName, chatMsg) => {
         remoteCharManagerRef.current?.applyChat(clientId, agentId, chatMsg)
+      },
+      onSavedAgents: (savedAgents) => {
+        const os = getOfficeState()
+        for (const saved of savedAgents) {
+          for (const [id, ch] of os.characters) {
+            if (ch.isRemote || ch.isSubagent) continue
+            if (id === saved.agentId) {
+              ch.palette = saved.palette
+              ch.hueShift = saved.hueShift
+              if (saved.seatId) {
+                const seat = os.seats.get(saved.seatId)
+                if (seat && !seat.assigned) {
+                  ch.seatId = saved.seatId
+                  seat.assigned = true
+                }
+              }
+            }
+          }
+        }
       },
       onRemoteLayout: (layout) => {
         if (isEditDirtyRef.current?.()) return

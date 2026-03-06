@@ -9,6 +9,7 @@ export interface AgentSnapshot {
   name: string
   status: 'active' | 'idle' | 'waiting' | 'permission'
   activeTool?: string
+  seatId?: string
   appearance: AvatarAppearance
   x: number
   y: number
@@ -32,12 +33,20 @@ export type ClientMessage =
   | { type: 'chat'; agentId: number; msg: string }
 
 // ── Server -> Client messages ──────────────────────────
+export interface SavedAgentInfo {
+  agentId: number
+  seatId?: string
+  palette: number
+  hueShift: number
+}
+
 export type ServerMessage =
   | { type: 'welcome'; clientId: string; layoutJson: string; layoutEtag: string }
   | { type: 'presence'; clients: PresenceClient[] }
   | { type: 'layoutFull'; layoutJson: string; layoutEtag: string }
   | { type: 'layoutChanged'; etag: string }
   | { type: 'chat'; clientId: string; agentId: number; userName: string; msg: string }
+  | { type: 'savedAgents'; agents: SavedAgentInfo[] }
 
 // ── SyncTransport event callbacks ──────────────────────
 export interface SyncTransportCallbacks {
@@ -57,4 +66,5 @@ export interface SyncManagerConfig {
   onRemoteLayout: (layout: unknown) => void
   isEditDirty?: () => boolean
   onChat?: (clientId: string, agentId: number, userName: string, msg: string) => void
+  onSavedAgents?: (agents: SavedAgentInfo[]) => void
 }

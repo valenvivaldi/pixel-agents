@@ -4,7 +4,8 @@ import * as path from 'path';
 import { WebSocketServer } from 'ws';
 import { ClientStore } from './ClientStore.js';
 import { LayoutStore } from './LayoutStore.js';
-import type { ClientMessage } from './types.js';
+import { UserStore } from './UserStore.js';
+import type { ClientMessage, RemoteAgent } from './types.js';
 
 const HEARTBEAT_TIMEOUT_MS = 10_000;
 const CLEANUP_INTERVAL_MS = 5_000;
@@ -18,6 +19,7 @@ function log(event: string, details?: Record<string, unknown>): void {
 export function createServer(port: number, dataDir: string): http.Server {
   const clients = new ClientStore();
   const layout = new LayoutStore(dataDir);
+  const userStore = new UserStore(dataDir);
 
   const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -103,12 +105,32 @@ export function createServer(port: number, dataDir: string): http.Server {
         clients.touchHeartbeat(clientId);
 
         if (msg.type === 'join') {
-          clients.setUserName(clientId, msg.userName || 'Anonymous');
+          const userName = msg.userName || 'Anonymous';
+          clients.setUserName(clientId, userName);
           const client = clients.get(clientId);
           log('client.joined', { clientId, userName: client?.userName });
+          // Send saved agent data (seat + appearance) for this user
+          const savedAgents = userStore.getUserAgents(userName);
+          if (savedAgents.length > 0) {
+            ws.send(JSON.stringify({
+              type: 'savedAgents',
+              agents: savedAgents,
+            }));
+          }
           clients.broadcastPresence();
         } else if (msg.type === 'heartbeat') {
           clients.updateAgents(clientId, msg.agents || []);
+          // Persist agent seats + appearance
+          const client = clients.get(clientId);
+          if (client && client.userName !== 'Anonymous') {
+            const agentsToSave = (msg.agents || []).map((a: RemoteAgent) => ({
+              agentId: a.id,
+              seatId: a.seatId,
+              palette: a.palette,
+              hueShift: a.hueShift,
+            }));
+            userStore.saveUserAgents(client.userName, agentsToSave);
+          }
           clients.broadcastPresence();
         } else if (msg.type === 'layoutPut') {
           try {
@@ -155,6 +177,7 @@ export function createServer(port: number, dataDir: string): http.Server {
   });
 
   layout.load();
+  userStore.load();
 
   const cleanupInterval = setInterval(() => {
     if (clients.cleanupStale(HEARTBEAT_TIMEOUT_MS)) {

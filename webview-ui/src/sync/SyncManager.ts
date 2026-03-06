@@ -70,6 +70,9 @@ export class SyncManager {
       case 'chat':
         this.config.onChat?.(msg.clientId, msg.agentId, msg.userName, msg.msg)
         break
+      case 'savedAgents':
+        this.config.onSavedAgents?.(msg.agents)
+        break
     }
   }
 

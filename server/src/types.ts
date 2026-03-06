@@ -60,11 +60,19 @@ export interface LayoutChangedMessage {
   etag: string;
 }
 
+export interface SavedAgentInfo {
+  agentId: number;
+  seatId?: string;
+  palette: number;
+  hueShift: number;
+}
+
 export interface WelcomeMessage {
   type: 'welcome';
   clientId: string;
   layoutJson: string;
   layoutEtag: string;
+  savedAgents?: SavedAgentInfo[];
 }
 
 export interface LayoutFullMessage {
@@ -81,4 +89,9 @@ export interface ChatBroadcast {
   msg: string;
 }
 
-export type ServerMessage = PresenceMessage | LayoutChangedMessage | WelcomeMessage | LayoutFullMessage | ChatBroadcast;
+export interface SavedAgentsMessage {
+  type: 'savedAgents';
+  agents: SavedAgentInfo[];
+}
+
+export type ServerMessage = PresenceMessage | LayoutChangedMessage | WelcomeMessage | LayoutFullMessage | ChatBroadcast | SavedAgentsMessage;
