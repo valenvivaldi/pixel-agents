@@ -123,6 +123,19 @@ export function createServer(port: number, dataDir: string): http.Server {
           } catch {
             log('layout.invalid_json', { clientId });
           }
+        } else if (msg.type === 'chat') {
+          const client = clients.get(clientId);
+          if (client && msg.msg && typeof msg.msg === 'string') {
+            const chatBroadcast = JSON.stringify({
+              type: 'chat',
+              clientId,
+              agentId: msg.agentId,
+              userName: client.userName,
+              msg: msg.msg.slice(0, 500),
+            });
+            clients.broadcastToAll(chatBroadcast);
+            log('chat', { clientId, agentId: msg.agentId, msgLength: msg.msg.length });
+          }
         }
       } catch (err) {
         log('ws.message_error', { clientId, error: String(err) });

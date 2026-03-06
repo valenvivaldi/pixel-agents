@@ -42,7 +42,13 @@ export interface LayoutPutMessage {
   layout: string;
 }
 
-export type ClientMessage = JoinMessage | HeartbeatMessage | LayoutPutMessage;
+export interface ChatMessage {
+  type: 'chat';
+  agentId: number;
+  msg: string;
+}
+
+export type ClientMessage = JoinMessage | HeartbeatMessage | LayoutPutMessage | ChatMessage;
 
 export interface PresenceMessage {
   type: 'presence';
@@ -67,4 +73,12 @@ export interface LayoutFullMessage {
   layoutEtag: string;
 }
 
-export type ServerMessage = PresenceMessage | LayoutChangedMessage | WelcomeMessage | LayoutFullMessage;
+export interface ChatBroadcast {
+  type: 'chat';
+  clientId: string;
+  agentId: number;
+  userName: string;
+  msg: string;
+}
+
+export type ServerMessage = PresenceMessage | LayoutChangedMessage | WelcomeMessage | LayoutFullMessage | ChatBroadcast;
