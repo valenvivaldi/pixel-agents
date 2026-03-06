@@ -16,7 +16,8 @@ export interface AgentSnapshot {
   dir: number
   state: string  // CharacterState value
   frame: number  // animation frame
-  isSubagent?: boolean
+  isSubagent?: boolean  // deprecated — use kind
+  kind?: string         // CharacterKind value
 }
 
 // ── Presence from server ───────────────────────────────

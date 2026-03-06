@@ -575,6 +575,7 @@ export function useExtensionMessages(
             state: ch.state,
             frame: ch.frame,
             isSubagent: ch.isSubagent || undefined,
+            kind: ch.kind,
           })
         }
         return result

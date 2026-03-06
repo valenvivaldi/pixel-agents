@@ -1,7 +1,7 @@
-import type { Character, Direction } from '../office/types.js'
+import type { Character, CharacterKind, Direction } from '../office/types.js'
 import type { OfficeState } from '../office/engine/officeState.js'
 import type { PresenceClient, AgentSnapshot } from './types.js'
-import { CharacterState } from '../office/types.js'
+import { CharacterState, CharacterKind as CK } from '../office/types.js'
 import { TILE_SIZE, WALK_SPEED_PX_PER_SEC, CHAT_MESSAGE_DURATION_SEC } from '../constants.js'
 import { createCharacter } from '../office/engine/characters.js'
 import { matrixEffectSeeds } from '../office/engine/matrixEffect.js'
@@ -109,9 +109,10 @@ export class RemoteCharacterManager {
 
   private createRemote(agent: AgentSnapshot, userName: string): Character {
     const id = this.nextId--
-    const ch = createCharacter(id, agent.appearance.palette, null, null, agent.appearance.hueShift)
+    const kind = agent.kind as CharacterKind || (agent.isSubagent ? CK.SUBAGENT : CK.AGENT)
+    const ch = createCharacter(id, agent.appearance.palette, null, null, agent.appearance.hueShift, kind)
     ch.isRemote = true
-    ch.isSubagent = !!agent.isSubagent
+    ch.isSubagent = kind === CK.SUBAGENT
     ch.userName = userName
     ch.isActive = agent.status === 'active'
     ch.seatId = agent.seatId || null
@@ -137,7 +138,9 @@ export class RemoteCharacterManager {
 
   private applyUpdate(ch: Character, agent: AgentSnapshot, userName: string): void {
     ch.userName = userName
-    ch.isSubagent = !!agent.isSubagent
+    const kind = agent.kind as CharacterKind || (agent.isSubagent ? CK.SUBAGENT : CK.AGENT)
+    ch.kind = kind
+    ch.isSubagent = kind === CK.SUBAGENT
     ch.isActive = agent.status === 'active'
     const newSeatId = agent.seatId || null
     if (newSeatId !== ch.seatId) {

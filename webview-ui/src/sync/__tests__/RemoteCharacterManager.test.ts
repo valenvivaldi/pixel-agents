@@ -5,8 +5,9 @@ import type { Character, Seat } from '../../office/types.js'
 
 // Mock createCharacter to avoid pulling in heavy dependencies (pathfinding, catalog, etc.)
 vi.mock('../../office/engine/characters.js', () => ({
-  createCharacter: (id: number, palette: number, _seatId: null, _seat: null, hueShift: number): Character => ({
+  createCharacter: (id: number, palette: number, _seatId: null, _seat: null, hueShift: number, kind = 'agent' as Character['kind']): Character => ({
     id,
+    kind,
     state: 'type' as any,
     dir: 0,
     x: 24,
@@ -72,8 +73,9 @@ function createMockOfficeState() {
   }
 }
 
-function makeSeat(seatId: string, col = 0, row = 0): Seat {
+function makeSeat(uid: string, col = 0, row = 0): Seat {
   return {
+    uid,
     seatCol: col,
     seatRow: row,
     facingDir: 0 as any,
@@ -400,5 +402,51 @@ describe('RemoteCharacterManager', () => {
     const parent = chars.find(c => c.matrixEffect !== 'despawn')
     expect(parent).toBeDefined()
     expect(parent!.isRemote).toBe(true)
+  })
+
+  // ── CharacterKind propagation ───────────────────────────────
+
+  it('sets kind=agent by default', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent()])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.kind).toBe('agent')
+  })
+
+  it('sets kind=subagent from isSubagent flag (backwards compat)', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent({ isSubagent: true })])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.kind).toBe('subagent')
+  })
+
+  it('sets kind from explicit kind field', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent({ kind: 'pet' } as any)])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.kind).toBe('pet')
+  })
+
+  it('kind field takes precedence over isSubagent', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent({ isSubagent: true, kind: 'pet' } as any)])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.kind).toBe('pet')
+  })
+
+  it('updates kind on subsequent presence updates', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent()])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.kind).toBe('agent')
+    mgr.updatePresence([makePresence('c1', [makeAgent({ kind: 'subagent' } as any)])])
+    expect(ch.kind).toBe('subagent')
+  })
+
+  it('syncs kind alongside other fields for mixed agents', () => {
+    mgr.updatePresence([makePresence('c1', [
+      makeAgent({ id: 1, kind: 'agent' } as any),
+      makeAgent({ id: 2, kind: 'subagent' } as any),
+      makeAgent({ id: 3, kind: 'pet' } as any),
+    ])])
+    const chars = [...os.characters.values()]
+    expect(chars).toHaveLength(3)
+    const kinds = chars.map(c => c.kind).sort()
+    expect(kinds).toEqual(['agent', 'pet', 'subagent'])
   })
 })
