@@ -909,12 +909,16 @@ function chatReadNewLines(): void {
           }
         }
 
+        if (matchedId === null && agents.size > 0) {
+          matchedId = agents.keys().next().value!
+          console.log(`[ChatWatcher] No match, falling back to agent ${matchedId}`)
+        }
         if (matchedId !== null) {
-          console.log(`[ChatWatcher] Matched agent ${matchedId}, sending to webview`)
+          console.log(`[ChatWatcher] Sending chat to agent ${matchedId}`)
           const emitter = getEmitter()
           emitter?.postMessage({ type: 'agentChat', id: matchedId, msg: obj.msg })
         } else {
-          console.log(`[ChatWatcher] No agent matched session ${obj.session.slice(0, 8)}...`)
+          console.log(`[ChatWatcher] No agents registered, ignoring chat`)
         }
       } catch { /* ignore bad JSON */ }
     }

@@ -1,7 +1,7 @@
-.PHONY: all install build dev electron clean server server-build server-stop
+.PHONY: all install build dev electron clean server server-build server-stop install-hooks
 
 # Build everything and launch Electron
-all: install build electron
+all: install install-hooks build electron
 
 # Install dependencies (root + webview + electron + server)
 install:
@@ -43,6 +43,11 @@ server: server-build
 # Stop the server (if running in background)
 server-stop:
 	@lsof -ti:$(PORT) | xargs kill 2>/dev/null || echo "No server running on port $(PORT)"
+
+# Install Claude Code chat hooks (safe to run multiple times)
+install-hooks:
+	@echo "── Installing Claude Code hooks ──"
+	@./scripts/install-hooks.sh
 
 # Clean build artifacts
 clean:

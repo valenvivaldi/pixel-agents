@@ -12,7 +12,7 @@ import {
 	sendLayout,
 	getProjectDirPath,
 } from './agentManager.js';
-import { ensureProjectScan } from './fileWatcher.js';
+import { ensureProjectScan, adoptTerminalForFile } from './fileWatcher.js';
 import { loadFurnitureAssets, sendAssetsToWebview, loadFloorTiles, sendFloorTilesToWebview, loadWallTiles, sendWallTilesToWebview, loadCharacterSprites, sendCharacterSpritesToWebview, loadDefaultLayout } from './assetLoader.js';
 import { WORKSPACE_KEY_AGENT_SEATS, GLOBAL_KEY_SOUND_ENABLED, GLOBAL_KEY_SHOW_LABELS_ALWAYS, GLOBAL_KEY_EXTERNAL_SESSIONS_ENABLED, GLOBAL_KEY_EXTERNAL_SESSIONS_SCOPE, CONFIG_KEY_SERVER_URL, CONFIG_KEY_USER_NAME } from './constants.js';
 import { writeLayoutToFile, readLayoutFromFile, watchLayoutFile } from './layoutPersistence.js';
@@ -441,15 +441,45 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 				const basename = path.basename(agent.jsonlFile, '.jsonl');
 				console.log(`[Pixel Agents]   Agent ${id}: session=${basename.slice(0, 8)}...`);
 			}
-			const agentId = findAgentBySession(this.agents.values(), line.session);
+			let agentId = findAgentBySession(this.agents.values(), line.session);
+			if (agentId === null) {
+				// Session not tracked — try to adopt the active terminal
+				agentId = this.tryAdoptSessionFromChat(line.session);
+			}
 			if (agentId !== null) {
-				console.log(`[Pixel Agents] Chat matched agent ${agentId}, posting to webview`);
+				console.log(`[Pixel Agents] Chat posting to agent ${agentId}, msg="${line.msg}"`);
 				this.webview?.postMessage({ type: 'agentChat', id: agentId, msg: line.msg });
 			} else {
-				console.log(`[Pixel Agents] Chat session not matched to any agent`);
+				console.log(`[Pixel Agents] Chat session not matched and no terminal to adopt`);
 			}
 		});
 		this.chatWatcher.start();
+	}
+
+	private tryAdoptSessionFromChat(sessionId: string): number | null {
+		const projectDir = getProjectDirPath();
+		if (!projectDir) return null;
+		const jsonlFile = path.join(projectDir, `${sessionId}.jsonl`);
+		if (!fs.existsSync(jsonlFile)) return null;
+
+		const activeTerminal = vscode.window.activeTerminal;
+		if (!activeTerminal) return null;
+
+		// Check terminal isn't already owned
+		for (const agent of this.agents.values()) {
+			if (!agent.isExternal && agent.terminalRef === activeTerminal) return null;
+		}
+
+		console.log(`[Pixel Agents] Chat triggered adoption for session ${sessionId.slice(0, 8)}...`);
+		adoptTerminalForFile(
+			activeTerminal, jsonlFile, projectDir,
+			this.nextAgentId, this.agents, this.activeAgentId,
+			this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+			this.webview, this.persistAgents,
+		);
+		this.knownJsonlFiles.add(jsonlFile);
+
+		return findAgentBySession(this.agents.values(), sessionId);
 	}
 
 	private startLayoutWatcher(): void {
