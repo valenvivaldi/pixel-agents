@@ -137,11 +137,12 @@ export function createServer(port: number, dataDir: string): http.Server {
             const etag = layout.update(msg.layout);
             log('layout.updated_ws', { clientId, etag: etag.slice(0, 8), bytes: msg.layout.length });
 
+            // Broadcast to other clients only — sender already has the layout
             clients.broadcastToAll(JSON.stringify({
               type: 'layoutFull',
               layoutJson: layout.getJson(),
               layoutEtag: layout.getEtag(),
-            }));
+            }), clientId);
           } catch {
             log('layout.invalid_json', { clientId });
           }

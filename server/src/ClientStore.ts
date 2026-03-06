@@ -89,9 +89,10 @@ export class ClientStore {
     }
   }
 
-  broadcastToAll(message: string): void {
+  broadcastToAll(message: string, excludeClientId?: string): void {
     for (const entry of this.clients.values()) {
       if (entry.ws.readyState !== 1) continue;
+      if (excludeClientId && entry.clientId === excludeClientId) continue;
       entry.ws.send(message);
     }
   }

@@ -5,6 +5,7 @@ export class SyncManager {
   private transport: SyncTransport | null = null
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private layoutEtag = ''
+  private hasReceivedLayout = false
   private config: SyncManagerConfig
 
   constructor(config: SyncManagerConfig) {
@@ -57,13 +58,21 @@ export class SyncManager {
       case 'welcome':
         if (msg.layoutJson && msg.layoutJson !== '{}') {
           this.layoutEtag = msg.layoutEtag || ''
-          try { this.config.onRemoteLayout(JSON.parse(msg.layoutJson)) } catch { /* bad JSON */ }
+          // Only apply server layout on first connect; on reconnect, keep local layout
+          // and push it to the server instead
+          if (!this.hasReceivedLayout) {
+            this.hasReceivedLayout = true
+            try { this.config.onRemoteLayout(JSON.parse(msg.layoutJson)) } catch { /* bad JSON */ }
+          }
         }
         break
-      case 'layoutFull':
-        this.layoutEtag = msg.layoutEtag || ''
+      case 'layoutFull': {
+        const newEtag = msg.layoutEtag || ''
+        if (newEtag && newEtag === this.layoutEtag) break // same layout, skip rebuild
+        this.layoutEtag = newEtag
         try { this.config.onRemoteLayout(JSON.parse(msg.layoutJson)) } catch { /* bad JSON */ }
         break
+      }
       case 'layoutChanged':
         this.fetchLayout()
         break
