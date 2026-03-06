@@ -4,17 +4,23 @@ import {
   DESK_SQUARE_SPRITE,
   BOOKSHELF_SPRITE,
   PLANT_SPRITE,
-  COOLER_SPRITE,
   WHITEBOARD_SPRITE,
   CHAIR_SPRITE,
   PC_SPRITE,
   LAMP_SPRITE,
   SOFA_SPRITE,
-  VENDING_MACHINE_SPRITE,
   COFFEE_TABLE_SPRITE,
   CHESS_TABLE_SPRITE,
   PORTA_POTTY_SPRITE,
 } from '../sprites/spriteData.js'
+import {
+  TS_TABLE_WOOD_SM_VERTICAL,
+  TS_CHAIR_CUSHION, TS_CHAIR_SPINNING, TS_BENCH,
+  TS_WATER_COOLER, TS_FRIDGE, TS_DECO_3,
+  TS_CLOCK, TS_LIBRARY_GRAY_FULL, TS_PLANT_SMALL,
+  TS_PAINTING_LARGE_1, TS_PAINTING_LARGE_2,
+  TS_PAINTING_SMALL_1, TS_PAINTING_SMALL_2, TS_PAINTING_SMALL_3,
+} from '../sprites/tilesetSprites.js'
 
 export interface LoadedAssetData {
   catalog: Array<{
@@ -47,16 +53,39 @@ export const FURNITURE_CATALOG: CatalogEntryWithCategory[] = [
   { type: FurnitureType.DESK,       label: 'Desk',       footprintW: 2, footprintH: 2, sprite: DESK_SQUARE_SPRITE,  isDesk: true,  category: 'desks' },
   { type: FurnitureType.BOOKSHELF,  label: 'Bookshelf',  footprintW: 1, footprintH: 2, sprite: BOOKSHELF_SPRITE,    isDesk: false, category: 'storage' },
   { type: FurnitureType.PLANT,      label: 'Plant',      footprintW: 1, footprintH: 1, sprite: PLANT_SPRITE,        isDesk: false, category: 'decor' },
-  { type: FurnitureType.COOLER,     label: 'Cooler',     footprintW: 1, footprintH: 1, sprite: COOLER_SPRITE,       isDesk: false, category: 'misc' },
+  // Cooler removed — use TS_WATER_COOLER (more detailed tileset version)
   { type: FurnitureType.WHITEBOARD, label: 'Whiteboard', footprintW: 2, footprintH: 1, sprite: WHITEBOARD_SPRITE,   isDesk: false, category: 'decor' },
   { type: FurnitureType.CHAIR,      label: 'Chair',      footprintW: 1, footprintH: 1, sprite: CHAIR_SPRITE,        isDesk: false, category: 'chairs' },
   { type: FurnitureType.PC,         label: 'PC',         footprintW: 1, footprintH: 1, sprite: PC_SPRITE,           isDesk: false, category: 'electronics' },
   { type: FurnitureType.LAMP,       label: 'Lamp',       footprintW: 1, footprintH: 1, sprite: LAMP_SPRITE,         isDesk: false, category: 'decor' },
   { type: FurnitureType.SOFA,       label: 'Sofa',       footprintW: 2, footprintH: 1, sprite: SOFA_SPRITE,         isDesk: false, category: 'chairs' },
-  { type: FurnitureType.VENDING_MACHINE, label: 'Vending Machine', footprintW: 1, footprintH: 2, sprite: VENDING_MACHINE_SPRITE, isDesk: false, category: 'misc' },
+  // Vending Machine removed — use TS layout version (ASSET_40) when available
   { type: FurnitureType.COFFEE_TABLE, label: 'Coffee Table', footprintW: 1, footprintH: 1, sprite: COFFEE_TABLE_SPRITE, isDesk: false, category: 'misc' },
   { type: FurnitureType.CHESS_TABLE, label: 'Chess Table', footprintW: 1, footprintH: 1, sprite: CHESS_TABLE_SPRITE, isDesk: false, category: 'misc' },
   { type: FurnitureType.PORTA_POTTY, label: 'Porta-Potty', footprintW: 1, footprintH: 1, sprite: PORTA_POTTY_SPRITE, isDesk: false, category: 'misc' },
+
+  // ── Tileset — Desks ──
+  { type: FurnitureType.TABLE_WOOD_SM_VERTICAL, label: 'Wood Table Vertical', footprintW: 1, footprintH: 2, sprite: TS_TABLE_WOOD_SM_VERTICAL, isDesk: true, category: 'desks' },
+
+  // ── Tileset — Chairs ──
+  { type: FurnitureType.CHAIR_CUSHION,  label: 'Cushioned Chair', footprintW: 1, footprintH: 1, sprite: TS_CHAIR_CUSHION,  isDesk: false, category: 'chairs' },
+  { type: FurnitureType.CHAIR_SPINNING, label: 'Spinning Chair',  footprintW: 1, footprintH: 1, sprite: TS_CHAIR_SPINNING, isDesk: false, category: 'chairs' },
+  { type: FurnitureType.BENCH,          label: 'Bench',           footprintW: 1, footprintH: 1, sprite: TS_BENCH,          isDesk: false, category: 'chairs' },
+
+  // ── Tileset — Decor ──
+  { type: FurnitureType.WATER_COOLER,     label: 'Water Cooler',     footprintW: 1, footprintH: 2, sprite: TS_WATER_COOLER,     isDesk: false, category: 'decor' },
+  { type: FurnitureType.FRIDGE,           label: 'Fridge',           footprintW: 1, footprintH: 2, sprite: TS_FRIDGE,           isDesk: false, category: 'misc' },
+  { type: FurnitureType.DECO_3,           label: 'Decoration',       footprintW: 1, footprintH: 1, sprite: TS_DECO_3,           isDesk: false, category: 'decor' },
+  { type: FurnitureType.CLOCK,            label: 'Clock',            footprintW: 1, footprintH: 1, sprite: TS_CLOCK,            isDesk: false, category: 'decor' },
+  { type: FurnitureType.LIBRARY_GRAY_FULL, label: 'Gray Bookshelf', footprintW: 2, footprintH: 2, sprite: TS_LIBRARY_GRAY_FULL, isDesk: false, category: 'storage' },
+  { type: FurnitureType.PLANT_SMALL,      label: 'Small Plant',      footprintW: 1, footprintH: 1, sprite: TS_PLANT_SMALL,      isDesk: false, category: 'decor' },
+
+  // ── Tileset — Wall art ──
+  { type: FurnitureType.PAINTING_LARGE_1,  label: 'Large Painting 1',  footprintW: 2, footprintH: 2, sprite: TS_PAINTING_LARGE_1,  isDesk: false, category: 'wall' },
+  { type: FurnitureType.PAINTING_LARGE_2,  label: 'Large Painting 2',  footprintW: 2, footprintH: 2, sprite: TS_PAINTING_LARGE_2,  isDesk: false, category: 'wall' },
+  { type: FurnitureType.PAINTING_SMALL_1,  label: 'Small Painting 1',  footprintW: 1, footprintH: 1, sprite: TS_PAINTING_SMALL_1,  isDesk: false, category: 'wall' },
+  { type: FurnitureType.PAINTING_SMALL_2,  label: 'Small Painting 2',  footprintW: 1, footprintH: 1, sprite: TS_PAINTING_SMALL_2,  isDesk: false, category: 'wall' },
+  { type: FurnitureType.PAINTING_SMALL_3,  label: 'Small Painting 3',  footprintW: 1, footprintH: 1, sprite: TS_PAINTING_SMALL_3,  isDesk: false, category: 'wall' },
 
 ]
 

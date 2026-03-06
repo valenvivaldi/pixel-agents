@@ -1601,7 +1601,10 @@ function hueShiftSprites(sprites: CharacterSprites, hueShift: number): Character
 }
 
 export function getCharacterSprites(paletteIndex: number, hueShift = 0): CharacterSprites {
-  const cacheKey = `${paletteIndex}:${hueShift}`
+  // Guard against undefined/NaN palette
+  const safePalette = (paletteIndex != null && !isNaN(paletteIndex)) ? paletteIndex : 0
+  const safeHueShift = (hueShift != null && !isNaN(hueShift)) ? hueShift : 0
+  const cacheKey = `${safePalette}:${safeHueShift}`
   const cached = spriteCache.get(cacheKey)
   if (cached) return cached
 
@@ -1609,7 +1612,36 @@ export function getCharacterSprites(paletteIndex: number, hueShift = 0): Charact
 
   if (loadedCharacters) {
     // Use pre-colored character sprites directly (no palette swapping)
-    const char = loadedCharacters[paletteIndex % loadedCharacters.length]
+    const char = loadedCharacters[safePalette % loadedCharacters.length]
+    if (!char || !char.down) {
+      // Fallback if character data is missing
+      console.warn(`[SpriteData] Missing character data for palette ${safePalette}, falling back to template`)
+      const pal = CHARACTER_PALETTES[safePalette % CHARACTER_PALETTES.length]
+      const r = (t: TemplateCell[][]) => resolveTemplate(t, pal)
+      const rf = (t: TemplateCell[][]) => resolveTemplate(flipHorizontal(t), pal)
+      sprites = {
+        walk: {
+          [Dir.DOWN]: [r(CHAR_WALK_DOWN_1), r(CHAR_WALK_DOWN_2), r(CHAR_WALK_DOWN_3), r(CHAR_WALK_DOWN_2)],
+          [Dir.UP]: [r(CHAR_WALK_UP_1), r(CHAR_WALK_UP_2), r(CHAR_WALK_UP_3), r(CHAR_WALK_UP_2)],
+          [Dir.RIGHT]: [r(CHAR_WALK_RIGHT_1), r(CHAR_WALK_RIGHT_2), r(CHAR_WALK_RIGHT_3), r(CHAR_WALK_RIGHT_2)],
+          [Dir.LEFT]: [rf(CHAR_WALK_RIGHT_1), rf(CHAR_WALK_RIGHT_2), rf(CHAR_WALK_RIGHT_3), rf(CHAR_WALK_RIGHT_2)],
+        },
+        typing: {
+          [Dir.DOWN]: [r(CHAR_DOWN_TYPE_1), r(CHAR_DOWN_TYPE_2)],
+          [Dir.UP]: [r(CHAR_UP_TYPE_1), r(CHAR_UP_TYPE_2)],
+          [Dir.RIGHT]: [r(CHAR_RIGHT_TYPE_1), r(CHAR_RIGHT_TYPE_2)],
+          [Dir.LEFT]: [rf(CHAR_RIGHT_TYPE_1), rf(CHAR_RIGHT_TYPE_2)],
+        },
+        reading: {
+          [Dir.DOWN]: [r(CHAR_DOWN_READ_1), r(CHAR_DOWN_READ_2)],
+          [Dir.UP]: [r(CHAR_UP_READ_1), r(CHAR_UP_READ_2)],
+          [Dir.RIGHT]: [r(CHAR_RIGHT_READ_1), r(CHAR_RIGHT_READ_2)],
+          [Dir.LEFT]: [rf(CHAR_RIGHT_READ_1), rf(CHAR_RIGHT_READ_2)],
+        },
+      }
+      spriteCache.set(cacheKey, sprites)
+      return sprites
+    }
     const d = char.down
     const u = char.up
     const rt = char.right
@@ -1637,7 +1669,7 @@ export function getCharacterSprites(paletteIndex: number, hueShift = 0): Charact
     }
   } else {
     // Fallback: use hardcoded templates with palette swapping
-    const pal = CHARACTER_PALETTES[paletteIndex % CHARACTER_PALETTES.length]
+    const pal = CHARACTER_PALETTES[safePalette % CHARACTER_PALETTES.length]
     const r = (t: TemplateCell[][]) => resolveTemplate(t, pal)
     const rf = (t: TemplateCell[][]) => resolveTemplate(flipHorizontal(t), pal)
 
@@ -1664,8 +1696,8 @@ export function getCharacterSprites(paletteIndex: number, hueShift = 0): Charact
   }
 
   // Apply hue shift if non-zero
-  if (hueShift !== 0) {
-    sprites = hueShiftSprites(sprites, hueShift)
+  if (safeHueShift !== 0) {
+    sprites = hueShiftSprites(sprites, safeHueShift)
   }
 
   spriteCache.set(cacheKey, sprites)

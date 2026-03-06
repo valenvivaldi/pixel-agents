@@ -166,7 +166,9 @@ export function useExtensionMessages(
         const rawLayout = msg.layout as OfficeLayout | null
         const layout = rawLayout && rawLayout.version === 1 ? migrateLayoutColors(rawLayout) : null
         if (layout) {
+          console.log(`[DEBUG] layoutLoaded: ${layout.furniture.length} furniture, types:`, [...new Set(layout.furniture.map((f: {type:string}) => f.type))])
           os.rebuildFromLayout(layout)
+          console.log(`[DEBUG] after rebuild: ${os.furniture.length} furniture instances`)
           onLayoutLoaded?.(layout)
         } else {
           // Default layout — snapshot whatever OfficeState built
