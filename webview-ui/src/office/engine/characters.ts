@@ -24,6 +24,8 @@ import {
   SEAT_REST_MIN_SEC,
   SEAT_REST_MAX_SEC,
   CHAT_EMOJI_INTERVAL_SEC,
+  SUBAGENT_WALK_SPEED_PX_PER_SEC,
+  SUBAGENT_WALK_FRAME_DURATION_SEC,
 } from '../../constants.js'
 import { FURNITURE_INTERACT_EMOJIS } from '../sprites/spriteData.js'
 import type { PlacedFurniture } from '../types.js'
@@ -427,8 +429,9 @@ export function updateCharacter(
     }
 
     case CharacterState.WALK: {
-      if (ch.frameTimer >= WALK_FRAME_DURATION_SEC) {
-        ch.frameTimer -= WALK_FRAME_DURATION_SEC
+      const walkFrameDur = ch.isSubagent ? SUBAGENT_WALK_FRAME_DURATION_SEC : WALK_FRAME_DURATION_SEC
+      if (ch.frameTimer >= walkFrameDur) {
+        ch.frameTimer -= walkFrameDur
         ch.frame = (ch.frame + 1) % 4
       }
 
@@ -527,7 +530,8 @@ export function updateCharacter(
       const nextTile = ch.path[0]
       ch.dir = directionBetween(ch.tileCol, ch.tileRow, nextTile.col, nextTile.row)
 
-      ch.moveProgress += (WALK_SPEED_PX_PER_SEC / TILE_SIZE) * dt
+      const walkSpeed = ch.isSubagent ? SUBAGENT_WALK_SPEED_PX_PER_SEC : WALK_SPEED_PX_PER_SEC
+      ch.moveProgress += (walkSpeed / TILE_SIZE) * dt
 
       const fromCenter = tileCenter(ch.tileCol, ch.tileRow)
       const toCenter = tileCenter(nextTile.col, nextTile.row)

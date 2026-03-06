@@ -860,7 +860,7 @@ export class OfficeState {
     // Collect tiles where active agents face desks
     const autoOnTiles = new Set<string>()
     for (const ch of this.characters.values()) {
-      if (!ch.isActive || !ch.seatId || ch.isRemote) continue
+      if (!ch.isActive || !ch.seatId) continue
       const seat = this.seats.get(ch.seatId)
       if (!seat) continue
       // Find the desk tile(s) the agent faces from their seat

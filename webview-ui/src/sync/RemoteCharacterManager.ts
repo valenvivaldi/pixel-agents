@@ -111,8 +111,14 @@ export class RemoteCharacterManager {
     const id = this.nextId--
     const ch = createCharacter(id, agent.appearance.palette, null, null, agent.appearance.hueShift)
     ch.isRemote = true
+    ch.isSubagent = !!agent.isSubagent
     ch.userName = userName
-    ch.isActive = false
+    ch.isActive = agent.status === 'active'
+    ch.seatId = agent.seatId || null
+    if (ch.seatId) {
+      const seat = this.os.seats.get(ch.seatId)
+      if (seat) seat.assigned = true
+    }
     ch.state = CharacterState.IDLE
     ch.x = agent.x
     ch.y = agent.y
@@ -131,6 +137,20 @@ export class RemoteCharacterManager {
 
   private applyUpdate(ch: Character, agent: AgentSnapshot, userName: string): void {
     ch.userName = userName
+    ch.isSubagent = !!agent.isSubagent
+    ch.isActive = agent.status === 'active'
+    const newSeatId = agent.seatId || null
+    if (newSeatId !== ch.seatId) {
+      if (ch.seatId) {
+        const oldSeat = this.os.seats.get(ch.seatId)
+        if (oldSeat) oldSeat.assigned = false
+      }
+      ch.seatId = newSeatId
+      if (ch.seatId) {
+        const seat = this.os.seats.get(ch.seatId)
+        if (seat) seat.assigned = true
+      }
+    }
     ch.currentTool = agent.activeTool || null
     ch.remoteTargetX = agent.x
     ch.remoteTargetY = agent.y
@@ -155,6 +175,10 @@ export class RemoteCharacterManager {
     const ch = this.os.characters.get(charId)
     if (!ch) return
     if (ch.matrixEffect === 'despawn') return
+    if (ch.seatId) {
+      const seat = this.os.seats.get(ch.seatId)
+      if (seat) seat.assigned = false
+    }
     ch.matrixEffect = 'despawn'
     ch.matrixEffectTimer = 0
     ch.matrixEffectSeeds = matrixEffectSeeds()
