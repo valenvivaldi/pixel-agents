@@ -982,18 +982,23 @@ export class OfficeState {
 
   /** Chat zoom popup: shows zoomed view of character when they post a chat message */
   chatZoomAgentId: number | null = null
+  private preChatFollowId: number | null = null
 
   showChatMessage(agentId: number, msg: string): void {
     const ch = this.characters.get(agentId)
     if (!ch) return
     ch.chatMessage = msg
     ch.chatMessageTimer = CHAT_MESSAGE_DURATION_SEC
+    // Save current follow before overriding for zoom capture
+    this.preChatFollowId = this.cameraFollowId
     this.chatZoomAgentId = agentId
-    // Center camera on the character so zoom popup captures the scene
     this.cameraFollowId = agentId
   }
 
   dismissChatZoom(): void {
+    // Restore previous camera follow
+    this.cameraFollowId = this.preChatFollowId
+    this.preChatFollowId = null
     this.chatZoomAgentId = null
   }
 
@@ -1043,7 +1048,7 @@ export class OfficeState {
           ch.chatMessage = null
           ch.chatMessageTimer = 0
           if (this.chatZoomAgentId === ch.id) {
-            this.chatZoomAgentId = null
+            this.dismissChatZoom()
           }
         }
       }
