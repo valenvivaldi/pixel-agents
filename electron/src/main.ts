@@ -1160,8 +1160,6 @@ function createWindow(): void {
   const devPath = path.join(__dirname, '..', '..', 'dist', 'webview', 'index.html')
   const prodPath = path.join(process.resourcesPath || '', 'webview', 'index.html')
 
-  mainWindow.webContents.openDevTools({ mode: 'detach' })
-
   if (fs.existsSync(devPath)) {
     mainWindow.loadFile(devPath)
   } else if (fs.existsSync(prodPath)) {
