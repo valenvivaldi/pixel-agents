@@ -796,23 +796,21 @@ function scanAndRestoreSubagents(agentId: number, filePath: string): void {
       } catch { /* skip malformed lines */ }
     }
 
-    // Now emit events only for subagents that are still active
-    // First, populate agent state
+    // Populate agent state with active tools
     for (const [toolId, name] of toolNames) {
       agent.activeToolIds.add(toolId)
       agent.activeToolNames.set(toolId, name)
       agent.activeToolStatuses.set(toolId, toolStatuses.get(toolId) || name)
     }
 
-    // Emit active subagents
-    for (const [parentToolId, subTools] of subagentToolIds) {
-      const parentName = toolNames.get(parentToolId) || ''
-      if (!SUBAGENT_TOOL_NAMES.has(parentName)) continue
-      agent.activeSubagentToolIds.set(parentToolId, new Set(subTools))
-      // Emit subagentToolStart so webview creates the character
-      const status = toolStatuses.get(parentToolId) || parentName
-      emitter?.postMessage({ type: 'subagentToolStart', id: agentId, parentToolId, toolId: parentToolId, status })
-      console.log(`[Pixel Agents] Agent ${agentId}: restored subagent for tool ${parentToolId}`)
+    // Emit agentToolStart for active Task/Agent tools so webview creates subagent characters
+    // (webview creates subagents when it sees agentToolStart with "Subtask:" prefix)
+    for (const [toolId, name] of toolNames) {
+      if (!SUBAGENT_TOOL_NAMES.has(name)) continue
+      const status = toolStatuses.get(toolId) || name
+      agent.activeSubagentToolIds.set(toolId, subagentToolIds.get(toolId) || new Set())
+      emitter?.postMessage({ type: 'agentToolStart', id: agentId, toolId, status })
+      console.log(`[Pixel Agents] Agent ${agentId}: restored subagent for tool ${toolId} (${status})`)
     }
 
     // Set agent status
