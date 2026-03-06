@@ -3,7 +3,7 @@ import type { OfficeState } from '../engine/officeState.js'
 import type { EditorState } from '../editor/editorState.js'
 import type { EditorRenderState, SelectionRenderState, DeleteButtonBounds, RotateButtonBounds } from '../engine/renderer.js'
 import { startGameLoop } from '../engine/gameLoop.js'
-import { renderFrame, renderChatZoomPopup } from '../engine/renderer.js'
+import { renderFrame, captureSceneForZoom, renderChatZoomPopup } from '../engine/renderer.js'
 import { TILE_SIZE, EditTool } from '../types.js'
 import { CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_SNAP_THRESHOLD, ZOOM_MIN, ZOOM_MAX, ZOOM_SCROLL_THRESHOLD, PAN_MARGIN_FRACTION } from '../../constants.js'
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js'
@@ -265,7 +265,8 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
         if (officeState.chatZoomAgentId !== null) {
           const zoomCh = officeState.characters.get(officeState.chatZoomAgentId)
           if (zoomCh && zoomCh.chatMessage) {
-            renderChatZoomPopup(ctx, zoomCh, w, h)
+            captureSceneForZoom(ctx, w, h)
+            renderChatZoomPopup(ctx, zoomCh, w, h, offsetX, offsetY, zoom)
           }
         }
 

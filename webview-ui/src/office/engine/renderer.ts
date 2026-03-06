@@ -80,11 +80,8 @@ import {
   CHAT_BUBBLE_BORDER,
   CHAT_BUBBLE_TEXT_COLOR,
   CHAT_BUBBLE_TAIL_SIZE_PX,
-  CHAT_ZOOM_SCALE,
-  CHAT_ZOOM_PADDING_PX,
   CHAT_ZOOM_BG,
   CHAT_ZOOM_BORDER_COLOR,
-  CHAT_ZOOM_BORDER_WIDTH,
 } from '../../constants.js'
 import { OfficeState } from './officeState.js'
 
@@ -903,117 +900,78 @@ export function renderAgentChatBubbles(
 
 // ── Chat Zoom Popup ─────────────────────────────────────────────
 
+// Offscreen canvas for capturing scene before overlay
+let _zoomOffscreen: OffscreenCanvas | null = null
+
+export function captureSceneForZoom(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  if (!_zoomOffscreen || _zoomOffscreen.width !== w || _zoomOffscreen.height !== h) {
+    _zoomOffscreen = new OffscreenCanvas(w, h)
+  }
+  const offCtx = _zoomOffscreen.getContext('2d')
+  if (!offCtx) return
+  offCtx.drawImage(ctx.canvas, 0, 0)
+}
+
 export function renderChatZoomPopup(
   ctx: CanvasRenderingContext2D,
   ch: Character,
   canvasWidth: number,
   canvasHeight: number,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
 ): void {
-  const zoomScale = CHAT_ZOOM_SCALE
-  const pad = CHAT_ZOOM_PADDING_PX
+  if (!_zoomOffscreen) return
 
-  // Get character sprite
-  const spriteSet = getCharacterSprites(ch.palette, ch.hueShift)
-  if (!spriteSet) return
-  const sprite = getCharacterSprite(ch, spriteSet)
-  if (!sprite) return
+  // Source: 7×6 tiles around character in the captured scene
+  const srcTilesW = 7
+  const srcTilesH = 6
+  const srcW = srcTilesW * TILE_SIZE * zoom
+  const srcH = srcTilesH * TILE_SIZE * zoom
+  const srcX = offsetX + ch.x * zoom - srcW / 2
+  const srcY = offsetY + ch.y * zoom - srcH * 0.6  // offset up to include chat bubble above
 
-  const spriteW = sprite[0].length
-  const spriteH = sprite.length
-  const scaledW = spriteW * zoomScale
-  const scaledH = spriteH * zoomScale
+  // Popup fills ~40% of screen width, maintain aspect ratio
+  const border = 3
+  const dstW = Math.floor(canvasWidth * 0.40)
+  const dstH = Math.floor(dstW * (srcH / srcW))
+  const windowW = dstW + border * 2
+  const windowH = dstH + border * 2
+  const windowX = Math.floor(canvasWidth / 2 - windowW / 2)
+  const windowY = Math.floor(canvasHeight / 2 - windowH / 2)
 
-  // Bubble text layout
-  const text = ch.chatMessage || ''
-  const fontSize = 14
+  // Fade
   ctx.save()
-  ctx.font = `${fontSize}px "FS Pixel Sans", monospace`
-  ctx.textBaseline = 'top'
-  ctx.textAlign = 'left'
-
-  const bubbleMaxW = 280
-  const bubblePad = 10
-  const words = text.split(' ')
-  const lines: string[] = []
-  let currentLine = ''
-  for (const word of words) {
-    const testLine = currentLine ? currentLine + ' ' + word : word
-    if (ctx.measureText(testLine).width > bubbleMaxW - bubblePad * 2 && currentLine) {
-      lines.push(currentLine)
-      currentLine = word
-    } else {
-      currentLine = testLine
-    }
+  let alpha = 1.0
+  if (ch.chatMessageTimer < BUBBLE_FADE_DURATION_SEC) {
+    alpha = ch.chatMessageTimer / BUBBLE_FADE_DURATION_SEC
   }
-  if (currentLine) lines.push(currentLine)
-
-  const lineHeight = fontSize * 1.4
-  const textHeight = lines.length * lineHeight
-  const textWidth = Math.min(
-    bubbleMaxW - bubblePad * 2,
-    Math.max(...lines.map(l => ctx.measureText(l).width)),
-  )
-  const bubbleW = textWidth + bubblePad * 2
-  const bubbleH = textHeight + bubblePad * 2
-  const tailSize = 6
-
-  // Total popup size: character + gap + bubble
-  const gap = 8
-  const totalH = scaledH + gap + tailSize + bubbleH
-  const totalW = Math.max(scaledW, bubbleW)
-
-  // Center popup on screen
-  const cx = Math.floor(canvasWidth / 2)
-  const cy = Math.floor(canvasHeight / 2)
+  ctx.globalAlpha = alpha
 
   // Dark overlay
   ctx.fillStyle = CHAT_ZOOM_BG
   ctx.fillRect(0, 0, canvasWidth, canvasHeight)
 
-  // Character position (centered, below bubble)
-  const charX = cx - Math.floor(scaledW / 2)
-  const charY = cy - Math.floor(totalH / 2) + bubbleH + tailSize + gap
+  // Window shadow (hard offset, pixel art style)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+  ctx.fillRect(windowX + 6, windowY + 6, windowW, windowH)
 
-  // Draw character sprite (pixel-perfect scaling)
-  const cached = getCachedSprite(sprite, zoomScale)
-  if (cached) {
-    ctx.drawImage(cached, charX, charY)
-  }
+  // Window background
+  ctx.fillStyle = '#1e1e2e'
+  ctx.fillRect(windowX, windowY, windowW, windowH)
 
-  // Bubble position (above character, centered)
-  const bx = cx - Math.floor(bubbleW / 2)
-  const by = charY - gap - tailSize - bubbleH
-
-  // Fade
-  let alpha = 1.0
-  if (ch.chatMessageTimer < BUBBLE_FADE_DURATION_SEC) {
-    alpha = ch.chatMessageTimer / BUBBLE_FADE_DURATION_SEC
-  }
-  if (alpha < 1.0) ctx.globalAlpha = alpha
-
-  // Bubble background
-  ctx.fillStyle = CHAT_BUBBLE_BG
-  ctx.fillRect(bx, by, bubbleW, bubbleH)
+  // Window border
   ctx.strokeStyle = CHAT_ZOOM_BORDER_COLOR
-  ctx.lineWidth = CHAT_ZOOM_BORDER_WIDTH
-  ctx.strokeRect(bx + 0.5, by + 0.5, bubbleW - 1, bubbleH - 1)
+  ctx.lineWidth = border
+  ctx.strokeRect(windowX + 1, windowY + 1, windowW - 2, windowH - 2)
 
-  // Tail
-  const tailX = cx
-  const tailY = by + bubbleH
-  ctx.fillStyle = CHAT_BUBBLE_BG
-  ctx.beginPath()
-  ctx.moveTo(tailX - tailSize, tailY)
-  ctx.lineTo(tailX + tailSize, tailY)
-  ctx.lineTo(tailX, tailY + tailSize)
-  ctx.closePath()
-  ctx.fill()
-
-  // Text
-  ctx.fillStyle = CHAT_BUBBLE_TEXT_COLOR
-  for (let i = 0; i < lines.length; i++) {
-    ctx.fillText(lines[i], bx + bubblePad, by + bubblePad + i * lineHeight)
-  }
+  // Scene viewport from the offscreen capture (no overlay contamination)
+  ctx.imageSmoothingEnabled = false
+  ctx.drawImage(
+    _zoomOffscreen,
+    Math.round(srcX), Math.round(srcY), Math.round(srcW), Math.round(srcH),
+    windowX + border, windowY + border, dstW, dstH,
+  )
 
   ctx.restore()
 }
