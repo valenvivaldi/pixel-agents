@@ -1,4 +1,4 @@
-import { TileType, TILE_SIZE, CharacterState, Direction } from '../types.js'
+import { TileType, TILE_SIZE, CharacterState, CHARACTER_BEHAVIORS, Direction } from '../types.js'
 import type { TileType as TileTypeVal, FurnitureInstance, Character, SpriteData, Seat, FloorColor } from '../types.js'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
 import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, VIRTUAL_MONITOR_FRAMES, VIRTUAL_MONITOR_OFF } from '../sprites/spriteData.js'
@@ -61,7 +61,6 @@ import {
   REGION_SELECT_COLOR,
   REGION_SELECT_STROKE,
   REGION_MOVE_GHOST_ALPHA,
-  SUBAGENT_SCALE,
   TOOL_EMOJI_SIZE_PX,
   TOOL_EMOJI_BG,
   TOOL_EMOJI_BORDER,
@@ -172,7 +171,7 @@ export function renderScene(
     const sprites = getCharacterSprites(ch.palette, ch.hueShift)
     const spriteData = getCharacterSprite(ch, sprites)
     const cached = getCachedSprite(spriteData, zoom)
-    const scale = ch.isSubagent ? SUBAGENT_SCALE : 1
+    const scale = CHARACTER_BEHAVIORS[ch.kind].scale
     const scaledW = Math.round(cached.width * scale)
     const scaledH = Math.round(cached.height * scale)
     // Sitting offset: shift character down when seated so they visually sit in the chair
@@ -222,7 +221,7 @@ export function renderScene(
     }
 
     const isExternalAgent = ch.isExternal
-    const isSmall = ch.isSubagent
+    const isSmall = scale !== 1
     drawables.push({
       zY: charZY,
       draw: (c) => {

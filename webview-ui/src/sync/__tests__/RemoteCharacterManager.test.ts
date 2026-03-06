@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { RemoteCharacterManager } from '../RemoteCharacterManager.js'
 import type { PresenceClient, AgentSnapshot } from '../types.js'
-import type { Character } from '../../office/types.js'
+import type { Character, Seat } from '../../office/types.js'
 
 // Mock createCharacter to avoid pulling in heavy dependencies (pathfinding, catalog, etc.)
 vi.mock('../../office/engine/characters.js', () => ({
-  createCharacter: (id: number, palette: number, _seatId: null, _seat: null, hueShift: number): Character => ({
+  createCharacter: (id: number, palette: number, _seatId: null, _seat: null, hueShift: number, kind = 'agent' as Character['kind']): Character => ({
     id,
+    kind,
     state: 'type' as any,
     dir: 0,
     x: 24,
@@ -64,9 +65,22 @@ vi.mock('../../office/engine/matrixEffect.js', () => ({
   matrixEffectSeeds: () => Array.from({ length: 16 }, () => Math.random()),
 }))
 
-// Minimal OfficeState mock — only needs a characters Map
+// Minimal OfficeState mock — needs characters Map and seats Map
 function createMockOfficeState() {
-  return { characters: new Map<number, Character>() }
+  return {
+    characters: new Map<number, Character>(),
+    seats: new Map<string, Seat>(),
+  }
+}
+
+function makeSeat(uid: string, col = 0, row = 0): Seat {
+  return {
+    uid,
+    seatCol: col,
+    seatRow: row,
+    facingDir: 0 as any,
+    assigned: false,
+  }
 }
 
 function makeAgent(overrides: Partial<AgentSnapshot> = {}): AgentSnapshot {
@@ -234,5 +248,205 @@ describe('RemoteCharacterManager', () => {
   it('applyChat ignores unknown clientId:agentId', () => {
     mgr.applyChat('unknown', 99, 'No target')
     expect(os.characters.size).toBe(0)
+  })
+
+  // ── Remote agent isActive + seatId propagation ──────────────
+
+  it('propagates isActive from agent status on create', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent({ status: 'active' })])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.isActive).toBe(true)
+  })
+
+  it('propagates isActive=false for idle agents on create', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent({ status: 'idle' })])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.isActive).toBe(false)
+  })
+
+  it('updates isActive on subsequent presence updates', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent({ status: 'idle' })])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.isActive).toBe(false)
+    mgr.updatePresence([makePresence('c1', [makeAgent({ status: 'active' })])])
+    expect(ch.isActive).toBe(true)
+    mgr.updatePresence([makePresence('c1', [makeAgent({ status: 'idle' })])])
+    expect(ch.isActive).toBe(false)
+  })
+
+  it('propagates seatId on create', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent({ seatId: 'seat-42' })])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.seatId).toBe('seat-42')
+  })
+
+  it('propagates seatId=null when no seatId', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent()])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.seatId).toBeNull()
+  })
+
+  it('updates seatId on subsequent presence updates', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent({ seatId: 'seat-1' })])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.seatId).toBe('seat-1')
+    mgr.updatePresence([makePresence('c1', [makeAgent({ seatId: 'seat-2' })])])
+    expect(ch.seatId).toBe('seat-2')
+  })
+
+  // ── Remote seat assignment (prevents local agents stealing remote seats) ──
+
+  it('marks seat as assigned when remote agent has seatId', () => {
+    const seat = makeSeat('seat-A', 3, 2)
+    os.seats.set('seat-A', seat)
+    expect(seat.assigned).toBe(false)
+
+    mgr.updatePresence([makePresence('c1', [makeAgent({ seatId: 'seat-A' })])])
+    expect(seat.assigned).toBe(true)
+  })
+
+  it('unassigns old seat when remote agent changes seat', () => {
+    const seatA = makeSeat('seat-A', 3, 2)
+    const seatB = makeSeat('seat-B', 5, 2)
+    os.seats.set('seat-A', seatA)
+    os.seats.set('seat-B', seatB)
+
+    mgr.updatePresence([makePresence('c1', [makeAgent({ seatId: 'seat-A' })])])
+    expect(seatA.assigned).toBe(true)
+    expect(seatB.assigned).toBe(false)
+
+    mgr.updatePresence([makePresence('c1', [makeAgent({ seatId: 'seat-B' })])])
+    expect(seatA.assigned).toBe(false)
+    expect(seatB.assigned).toBe(true)
+  })
+
+  it('unassigns seat when remote agent despawns', () => {
+    const seat = makeSeat('seat-A', 3, 2)
+    os.seats.set('seat-A', seat)
+
+    mgr.updatePresence([makePresence('c1', [makeAgent({ seatId: 'seat-A' })])])
+    expect(seat.assigned).toBe(true)
+
+    mgr.updatePresence([makePresence('c1', [])]) // agent removed
+    expect(seat.assigned).toBe(false)
+  })
+
+  it('unassigns seat on dispose', () => {
+    const seat = makeSeat('seat-A', 3, 2)
+    os.seats.set('seat-A', seat)
+
+    mgr.updatePresence([makePresence('c1', [makeAgent({ seatId: 'seat-A' })])])
+    expect(seat.assigned).toBe(true)
+
+    mgr.dispose()
+    expect(seat.assigned).toBe(false)
+  })
+
+  it('handles seatId not in seats map gracefully', () => {
+    // seatId references a seat not in the local map — should not crash
+    mgr.updatePresence([makePresence('c1', [makeAgent({ seatId: 'nonexistent-seat' })])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.seatId).toBe('nonexistent-seat')
+  })
+
+  // ── Remote subagent propagation ─────────────────────────────
+
+  it('marks remote character as subagent when isSubagent=true', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent({ isSubagent: true })])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.isSubagent).toBe(true)
+  })
+
+  it('marks remote character as non-subagent by default', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent()])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.isSubagent).toBe(false)
+  })
+
+  it('updates isSubagent on subsequent presence updates', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent()])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.isSubagent).toBe(false)
+    mgr.updatePresence([makePresence('c1', [makeAgent({ isSubagent: true })])])
+    expect(ch.isSubagent).toBe(true)
+  })
+
+  it('shares subagent alongside regular agent for same client', () => {
+    mgr.updatePresence([makePresence('c1', [
+      makeAgent({ id: 1, isSubagent: false }),
+      makeAgent({ id: -1, isSubagent: true, appearance: { palette: 3, hueShift: 90 }, x: 96, y: 96 }),
+    ])])
+    expect(os.characters.size).toBe(2)
+    const chars = [...os.characters.values()]
+    const parent = chars.find(c => !c.isSubagent)!
+    const sub = chars.find(c => c.isSubagent)!
+    expect(parent).toBeDefined()
+    expect(sub).toBeDefined()
+    expect(sub.palette).toBe(3)
+    expect(sub.hueShift).toBe(90)
+  })
+
+  it('despawns subagent independently of parent', () => {
+    mgr.updatePresence([makePresence('c1', [
+      makeAgent({ id: 1 }),
+      makeAgent({ id: -1, isSubagent: true, x: 96, y: 96 }),
+    ])])
+    expect(os.characters.size).toBe(2)
+
+    // Remove subagent but keep parent
+    mgr.updatePresence([makePresence('c1', [makeAgent({ id: 1 })])])
+    const chars = [...os.characters.values()]
+    const despawned = chars.find(c => c.matrixEffect === 'despawn')
+    expect(despawned).toBeDefined()
+    // Parent still active
+    const parent = chars.find(c => c.matrixEffect !== 'despawn')
+    expect(parent).toBeDefined()
+    expect(parent!.isRemote).toBe(true)
+  })
+
+  // ── CharacterKind propagation ───────────────────────────────
+
+  it('sets kind=agent by default', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent()])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.kind).toBe('agent')
+  })
+
+  it('sets kind=subagent from isSubagent flag (backwards compat)', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent({ isSubagent: true })])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.kind).toBe('subagent')
+  })
+
+  it('sets kind from explicit kind field', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent({ kind: 'pet' } as any)])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.kind).toBe('pet')
+  })
+
+  it('kind field takes precedence over isSubagent', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent({ isSubagent: true, kind: 'pet' } as any)])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.kind).toBe('pet')
+  })
+
+  it('updates kind on subsequent presence updates', () => {
+    mgr.updatePresence([makePresence('c1', [makeAgent()])])
+    const ch = [...os.characters.values()][0]
+    expect(ch.kind).toBe('agent')
+    mgr.updatePresence([makePresence('c1', [makeAgent({ kind: 'subagent' } as any)])])
+    expect(ch.kind).toBe('subagent')
+  })
+
+  it('syncs kind alongside other fields for mixed agents', () => {
+    mgr.updatePresence([makePresence('c1', [
+      makeAgent({ id: 1, kind: 'agent' } as any),
+      makeAgent({ id: 2, kind: 'subagent' } as any),
+      makeAgent({ id: 3, kind: 'pet' } as any),
+    ])])
+    const chars = [...os.characters.values()]
+    expect(chars).toHaveLength(3)
+    const kinds = chars.map(c => c.kind).sort()
+    expect(kinds).toEqual(['agent', 'pet', 'subagent'])
   })
 })

@@ -34,6 +34,77 @@ export interface FloorColor {
   colorize?: boolean
 }
 
+// ── Character Kind system ─────────────────────────────────────
+export const CharacterKind = {
+  AGENT: 'agent',
+  SUBAGENT: 'subagent',
+  PET: 'pet',
+} as const
+export type CharacterKind = (typeof CharacterKind)[keyof typeof CharacterKind]
+
+/** Behavioral config per CharacterKind */
+export interface CharacterBehavior {
+  /** Render scale (1 = normal) */
+  scale: number
+  /** Walk speed in pixels per second */
+  walkSpeed: number
+  /** Walk animation frame duration in seconds */
+  walkFrameDuration: number
+  /** Minimum idle pause between wander moves (seconds) */
+  pauseMin: number
+  /** Maximum idle pause between wander moves (seconds) */
+  pauseMax: number
+  /** Can sit at a desk and work (TYPE state) */
+  canSit: boolean
+  /** Can interact with furniture (water cooler, vending machine, etc) */
+  canInteractFurniture: boolean
+  /** Can use the bathroom */
+  canUseBathroom: boolean
+  /** Can initiate chat with other characters */
+  canChat: boolean
+  /** Can trigger kamehameha */
+  canFight: boolean
+}
+
+export const CHARACTER_BEHAVIORS: Record<CharacterKind, CharacterBehavior> = {
+  [CharacterKind.AGENT]: {
+    scale: 1,
+    walkSpeed: 48,
+    walkFrameDuration: 0.15,
+    pauseMin: 2.0,
+    pauseMax: 20.0,
+    canSit: true,
+    canInteractFurniture: true,
+    canUseBathroom: true,
+    canChat: true,
+    canFight: true,
+  },
+  [CharacterKind.SUBAGENT]: {
+    scale: 0.7,
+    walkSpeed: 100,
+    walkFrameDuration: 0.08,
+    pauseMin: 0.3,
+    pauseMax: 1.2,
+    canSit: false,
+    canInteractFurniture: false,
+    canUseBathroom: false,
+    canChat: false,
+    canFight: false,
+  },
+  [CharacterKind.PET]: {
+    scale: 0.5,
+    walkSpeed: 60,
+    walkFrameDuration: 0.1,
+    pauseMin: 1.0,
+    pauseMax: 5.0,
+    canSit: false,
+    canInteractFurniture: false,
+    canUseBathroom: false,
+    canChat: false,
+    canFight: false,
+  },
+}
+
 export const CharacterState = {
   IDLE: 'idle',
   WALK: 'walk',
@@ -184,6 +255,8 @@ export interface OfficeLayout {
 
 export interface Character {
   id: number
+  /** Character type — determines behavior (scale, speed, can sit, etc.) */
+  kind: CharacterKind
   state: CharacterState
   dir: Direction
   /** Pixel position */

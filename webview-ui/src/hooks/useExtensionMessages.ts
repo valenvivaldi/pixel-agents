@@ -12,6 +12,7 @@ import { playDoneSound, setSoundEnabled } from '../notificationSound.js'
 import { SyncManager } from '../sync/SyncManager.js'
 import { RemoteCharacterManager } from '../sync/RemoteCharacterManager.js'
 import { AvatarIdentity } from '../avatar/AvatarIdentity.js'
+import type { AvatarAppearance } from '../avatar/types.js'
 import type { SyncMode, AgentSnapshot, SavedAgentInfo } from '../sync/types.js'
 
 export interface SubagentCharacter {
@@ -200,9 +201,16 @@ export function useExtensionMessages(
         const projectId = msg.projectId as string | undefined
         setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
         if (!isExternal) setSelectedAgent(id)
-        // Use deterministic palette based on userName for consistent appearance across clients
-        const userPalette = localUserNameRef.current ? AvatarIdentity.fromUserName(localUserNameRef.current) : undefined
-        os.addAgent(id, userPalette?.palette, userPalette?.hueShift, undefined, undefined, folderName, isExternal, projectId)
+        // First agent uses deterministic palette from userName; subsequent agents use pickDiverse
+        const existingLocal = [...os.characters.values()].filter(ch => !ch.isSubagent && !ch.isRemote)
+        let userPalette: AvatarAppearance | undefined
+        if (existingLocal.length === 0 && localUserNameRef.current) {
+          userPalette = AvatarIdentity.fromUserName(localUserNameRef.current)
+        } else {
+          const existing = existingLocal.map(ch => ({ palette: ch.palette, hueShift: ch.hueShift }))
+          userPalette = AvatarIdentity.pickDiverse(existing)
+        }
+        os.addAgent(id, userPalette.palette, userPalette.hueShift, undefined, undefined, folderName, isExternal, projectId)
         // Tag new local agent with local username
         if (!isExternal) {
           const ch = os.characters.get(id)
@@ -553,7 +561,7 @@ export function useExtensionMessages(
         const os = getOfficeState()
         const result: AgentSnapshot[] = []
         for (const ch of os.characters.values()) {
-          if (ch.isRemote || ch.isSubagent) continue
+          if (ch.isRemote) continue
           result.push({
             id: ch.id,
             name: `Agent ${ch.id}`,
@@ -566,6 +574,8 @@ export function useExtensionMessages(
             dir: ch.dir,
             state: ch.state,
             frame: ch.frame,
+            isSubagent: ch.isSubagent || undefined,
+            kind: ch.kind,
           })
         }
         return result

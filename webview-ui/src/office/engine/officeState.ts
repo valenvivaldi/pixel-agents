@@ -1,4 +1,4 @@
-import { TILE_SIZE, MATRIX_EFFECT_DURATION, CharacterState, Direction, TileType, FurnitureType, MAX_COLS, MAX_ROWS } from '../types.js'
+import { TILE_SIZE, MATRIX_EFFECT_DURATION, CharacterState, CharacterKind, Direction, TileType, FurnitureType, MAX_COLS, MAX_ROWS } from '../types.js'
 import {
   WAITING_BUBBLE_DURATION_SEC,
   DISMISS_BUBBLE_FAST_FADE_SEC,
@@ -710,7 +710,7 @@ export class OfficeState {
     if (bestSeatId) {
       const seat = this.seats.get(bestSeatId)!
       seat.assigned = true
-      ch = createCharacter(id, palette, bestSeatId, seat, hueShift)
+      ch = createCharacter(id, palette, bestSeatId, seat, hueShift, CharacterKind.SUBAGENT)
     } else {
       // No seats — spawn at closest walkable tile to parent
       let spawn = { col: 1, row: 1 }
@@ -726,7 +726,7 @@ export class OfficeState {
         }
         spawn = closest
       }
-      ch = createCharacter(id, palette, null, null, hueShift)
+      ch = createCharacter(id, palette, null, null, hueShift, CharacterKind.SUBAGENT)
       ch.x = spawn.col * TILE_SIZE + TILE_SIZE / 2
       ch.y = spawn.row * TILE_SIZE + TILE_SIZE / 2
       ch.tileCol = spawn.col
@@ -860,7 +860,7 @@ export class OfficeState {
     // Collect tiles where active agents face desks
     const autoOnTiles = new Set<string>()
     for (const ch of this.characters.values()) {
-      if (!ch.isActive || !ch.seatId || ch.isRemote) continue
+      if (!ch.isActive || !ch.seatId) continue
       const seat = this.seats.get(ch.seatId)
       if (!seat) continue
       // Find the desk tile(s) the agent faces from their seat

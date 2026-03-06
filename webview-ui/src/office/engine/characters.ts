@@ -1,13 +1,9 @@
-import { CharacterState, Direction, TILE_SIZE } from '../types.js'
-import type { Character, Seat, SpriteData, TileType as TileTypeVal } from '../types.js'
+import { CharacterState, CharacterKind, CHARACTER_BEHAVIORS, Direction, TILE_SIZE } from '../types.js'
+import type { Character, CharacterBehavior, Seat, SpriteData, TileType as TileTypeVal } from '../types.js'
 import type { CharacterSprites } from '../sprites/spriteData.js'
 import { findPath } from '../layout/tileMap.js'
 import {
-  WALK_SPEED_PX_PER_SEC,
-  WALK_FRAME_DURATION_SEC,
   TYPE_FRAME_DURATION_SEC,
-  WANDER_PAUSE_MIN_SEC,
-  WANDER_PAUSE_MAX_SEC,
   WANDER_MOVES_BEFORE_REST_MIN,
   WANDER_MOVES_BEFORE_REST_MAX,
   VIRTUAL_MONITOR_FRAME_DURATION_SEC,
@@ -61,12 +57,14 @@ export function createCharacter(
   seatId: string | null,
   seat: Seat | null,
   hueShift = 0,
+  kind: CharacterKind = CharacterKind.AGENT,
 ): Character {
   const col = seat ? seat.seatCol : 1
   const row = seat ? seat.seatRow : 1
   const center = tileCenter(col, row)
   return {
     id,
+    kind,
     state: CharacterState.TYPE,
     dir: seat ? seat.facingDir : Direction.DOWN,
     x: center.x,
@@ -214,12 +212,12 @@ export function updateCharacter(
 
   switch (ch.state) {
     case CharacterState.TYPE: {
-      // Subagents never sit — immediately start wandering
-      if (ch.isSubagent) {
+      // Non-sitting kinds (subagents, pets) — immediately start wandering
+      if (!getBehavior(ch).canSit) {
         ch.state = CharacterState.IDLE
         ch.frame = 0
         ch.frameTimer = 0
-        ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+        ch.wanderTimer = wanderPause(ch)
         break
       }
       if (ch.frameTimer >= TYPE_FRAME_DURATION_SEC) {
@@ -231,7 +229,7 @@ export function updateCharacter(
         ch.state = CharacterState.IDLE
         ch.frame = 0
         ch.frameTimer = 0
-        ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+        ch.wanderTimer = wanderPause(ch)
       }
       break
     }
@@ -241,8 +239,8 @@ export function updateCharacter(
       ch.frame = 0
       if (ch.seatTimer < 0) ch.seatTimer = 0 // clear turn-end sentinel
 
-      // If became active, pathfind to seat (subagents skip — they never sit)
-      if (ch.isActive && !ch.isSubagent) {
+      // If became active, pathfind to seat (non-sitting kinds skip)
+      if (ch.isActive && getBehavior(ch).canSit) {
         if (!ch.seatId) {
           // No seat assigned — type in place
           ch.state = CharacterState.TYPE
@@ -272,6 +270,23 @@ export function updateCharacter(
       // Countdown wander timer
       ch.wanderTimer -= dt
       if (ch.wanderTimer <= 0) {
+        // Non-interacting kinds (subagents, pets) just run around
+        const behavior = getBehavior(ch)
+        if (!behavior.canInteractFurniture && !behavior.canUseBathroom) {
+          if (walkableTiles.length > 0) {
+            const target = walkableTiles[Math.floor(Math.random() * walkableTiles.length)]
+            const path = findPath(ch.tileCol, ch.tileRow, target.col, target.row, tileMap, blockedTiles)
+            if (path.length > 0) {
+              ch.path = path
+              ch.moveProgress = 0
+              ch.state = CharacterState.WALK
+              ch.frame = 0
+              ch.frameTimer = 0
+            }
+          }
+          ch.wanderTimer = wanderPause(ch)
+          break
+        }
         // Try to interact with furniture
         let didInteract = false
         if (furniture && Math.random() < INTERACT_CHANCE) {
@@ -304,7 +319,7 @@ export function updateCharacter(
             ch.frameTimer = 0
             ch.bathroomTarget = { faceDir: target.faceDir }
             ch.wanderCount++
-            ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+            ch.wanderTimer = wanderPause(ch)
             didInteract = true
           }
         }
@@ -320,7 +335,7 @@ export function updateCharacter(
             ch.wanderCount++
           }
         }
-        ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+        ch.wanderTimer = wanderPause(ch)
       }
       break
     }
@@ -335,7 +350,7 @@ export function updateCharacter(
       if (ch.bathroomTimer <= 0) {
         ch.state = CharacterState.IDLE
         ch.bathroomTimer = 0
-        ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+        ch.wanderTimer = wanderPause(ch)
       }
       break
     }
@@ -358,7 +373,7 @@ export function updateCharacter(
           ch.kamehamehaPhase = null
           ch.kamehamehaTargetId = null
           ch.state = CharacterState.IDLE
-          ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+          ch.wanderTimer = wanderPause(ch)
         }
       }
       // Reuse typing animation for "power up" hands
@@ -392,7 +407,7 @@ export function updateCharacter(
           ch.state = CharacterState.IDLE
           ch.frame = 0
           ch.frameTimer = 0
-          ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+          ch.wanderTimer = wanderPause(ch)
         }
       }
       break
@@ -419,7 +434,7 @@ export function updateCharacter(
         ch.interactEmoji = '🙌'
         ch.interactEmojiTimer = INTERACT_EMOJI_DURATION_SEC
         ch.state = CharacterState.IDLE
-        ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+        ch.wanderTimer = wanderPause(ch)
         ch.frame = 0
         ch.frameTimer = 0
       }
@@ -427,8 +442,9 @@ export function updateCharacter(
     }
 
     case CharacterState.WALK: {
-      if (ch.frameTimer >= WALK_FRAME_DURATION_SEC) {
-        ch.frameTimer -= WALK_FRAME_DURATION_SEC
+      const walkFrameDur = getBehavior(ch).walkFrameDuration
+      if (ch.frameTimer >= walkFrameDur) {
+        ch.frameTimer -= walkFrameDur
         ch.frame = (ch.frame + 1) % 4
       }
 
@@ -438,7 +454,7 @@ export function updateCharacter(
         ch.x = center.x
         ch.y = center.y
 
-        if (ch.isActive && !ch.isSubagent) {
+        if (ch.isActive && getBehavior(ch).canSit) {
           ch.bathroomTarget = null // cancel bathroom trip if became active
           if (!ch.seatId) {
             // No seat — type in place
@@ -496,7 +512,7 @@ export function updateCharacter(
             break
           }
           // Check if arrived at assigned seat — sit down for a rest before wandering again
-          if (ch.seatId) {
+          if (ch.seatId && getBehavior(ch).canSit) {
             const seat = seats.get(ch.seatId)
             if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
               ch.state = CharacterState.TYPE
@@ -516,7 +532,7 @@ export function updateCharacter(
             }
           }
           ch.state = CharacterState.IDLE
-          ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+          ch.wanderTimer = wanderPause(ch)
         }
         ch.frame = 0
         ch.frameTimer = 0
@@ -527,7 +543,7 @@ export function updateCharacter(
       const nextTile = ch.path[0]
       ch.dir = directionBetween(ch.tileCol, ch.tileRow, nextTile.col, nextTile.row)
 
-      ch.moveProgress += (WALK_SPEED_PX_PER_SEC / TILE_SIZE) * dt
+      ch.moveProgress += (getBehavior(ch).walkSpeed / TILE_SIZE) * dt
 
       const fromCenter = tileCenter(ch.tileCol, ch.tileRow)
       const toCenter = tileCenter(nextTile.col, nextTile.row)
@@ -589,6 +605,15 @@ export function getCharacterSprite(ch: Character, sprites: CharacterSprites): Sp
 
 function randomRange(min: number, max: number): number {
   return min + Math.random() * (max - min)
+}
+
+function getBehavior(ch: Character): CharacterBehavior {
+  return CHARACTER_BEHAVIORS[ch.kind]
+}
+
+function wanderPause(ch: Character): number {
+  const b = getBehavior(ch)
+  return randomRange(b.pauseMin, b.pauseMax)
 }
 
 function randomInt(min: number, max: number): number {
