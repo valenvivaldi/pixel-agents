@@ -720,6 +720,111 @@ function readNewLines(agentId: number): void {
   } catch { /* Read error, ignore */ }
 }
 
+/**
+ * Scan the entire JSONL file silently to detect active subagents,
+ * then emit only the currently-active ones to the webview.
+ */
+function scanAndRestoreSubagents(agentId: number, filePath: string): void {
+  const agent = agents.get(agentId)
+  if (!agent) return
+  const emitter = getEmitter()
+
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8')
+    const lines = content.split('\n')
+
+    // Track tool state silently (no events emitted)
+    const toolNames = new Map<string, string>() // toolId → toolName
+    const toolStatuses = new Map<string, string>() // toolId → status
+    const subagentToolIds = new Map<string, Set<string>>() // parentToolId → Set<subToolId>
+
+    for (const line of lines) {
+      if (!line.trim()) continue
+      try {
+        const record = JSON.parse(line)
+
+        if (record.type === 'assistant' && Array.isArray(record.message?.content)) {
+          for (const block of record.message.content) {
+            if (block.type === 'tool_use' && block.id) {
+              toolNames.set(block.id, block.name || '')
+              toolStatuses.set(block.id, formatToolStatus(block.name || '', block.input || {}))
+            }
+          }
+        } else if (record.type === 'user' && Array.isArray(record.message?.content)) {
+          for (const block of record.message.content) {
+            if (block.type === 'tool_result' && block.tool_use_id) {
+              const completedName = toolNames.get(block.tool_use_id) || ''
+              if (SUBAGENT_TOOL_NAMES.has(completedName)) {
+                subagentToolIds.delete(block.tool_use_id)
+              }
+              toolNames.delete(block.tool_use_id)
+              toolStatuses.delete(block.tool_use_id)
+            }
+          }
+        } else if (record.type === 'progress' && record.parentToolUseID) {
+          const parentToolId = record.parentToolUseID as string
+          const parentName = toolNames.get(parentToolId) || ''
+          if (!SUBAGENT_TOOL_NAMES.has(parentName)) continue
+          const data = record.data as Record<string, unknown> | undefined
+          if (!data) continue
+          const msg = data.message as Record<string, unknown> | undefined
+          if (!msg) continue
+          const innerMsg = msg.message as Record<string, unknown> | undefined
+          const innerContent = innerMsg?.content
+          if (!Array.isArray(innerContent)) continue
+          const msgType = msg.type as string
+          if (msgType === 'assistant') {
+            for (const block of innerContent) {
+              if (block.type === 'tool_use' && block.id) {
+                let subs = subagentToolIds.get(parentToolId)
+                if (!subs) { subs = new Set(); subagentToolIds.set(parentToolId, subs) }
+                subs.add(block.id)
+              }
+            }
+          } else if (msgType === 'user') {
+            for (const block of innerContent) {
+              if (block.type === 'tool_result' && block.tool_use_id) {
+                subagentToolIds.get(parentToolId)?.delete(block.tool_use_id)
+              }
+            }
+          }
+        } else if (record.type === 'system' && record.subtype === 'turn_duration') {
+          toolNames.clear()
+          toolStatuses.clear()
+          subagentToolIds.clear()
+        }
+      } catch { /* skip malformed lines */ }
+    }
+
+    // Now emit events only for subagents that are still active
+    // First, populate agent state
+    for (const [toolId, name] of toolNames) {
+      agent.activeToolIds.add(toolId)
+      agent.activeToolNames.set(toolId, name)
+      agent.activeToolStatuses.set(toolId, toolStatuses.get(toolId) || name)
+    }
+
+    // Emit active subagents
+    for (const [parentToolId, subTools] of subagentToolIds) {
+      const parentName = toolNames.get(parentToolId) || ''
+      if (!SUBAGENT_TOOL_NAMES.has(parentName)) continue
+      agent.activeSubagentToolIds.set(parentToolId, new Set(subTools))
+      // Emit subagentToolStart so webview creates the character
+      const status = toolStatuses.get(parentToolId) || parentName
+      emitter?.postMessage({ type: 'subagentToolStart', id: agentId, parentToolId, toolId: parentToolId, status })
+      console.log(`[Pixel Agents] Agent ${agentId}: restored subagent for tool ${parentToolId}`)
+    }
+
+    // Set agent status
+    if (agent.activeToolIds.size > 0) {
+      agent.hadToolsInTurn = true
+      emitter?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' })
+    }
+  } catch (err) {
+    console.log(`[Pixel Agents] scanAndRestoreSubagents error: ${err}`)
+  }
+}
+
 function startFileWatching(agentId: number, filePath: string): void {
   try {
     const watcher = fs.watch(filePath, () => readNewLines(agentId))
@@ -811,7 +916,7 @@ function runExternalScan(): void {
                 isExternal: true,
                 projectDir: dir,
                 jsonlFile: file,
-                fileOffset: 0, // start from beginning to detect active subagents
+                fileOffset: stat.size, // start from end; active subagents detected by scan below
                 lineBuffer: '',
                 activeToolIds: new Set(),
                 activeToolStatuses: new Map(),
@@ -830,8 +935,8 @@ function runExternalScan(): void {
               console.log(`[Pixel Agents] External agent ${id}: tracking ${path.basename(file)}`)
               const projectId = path.basename(dir)
               emitter?.postMessage({ type: 'agentCreated', id, isExternal: true, folderName, projectId })
+              scanAndRestoreSubagents(id, file)
               startFileWatching(id, file)
-              readNewLines(id)
             }
           } else if (age > EXTERNAL_SESSION_REMOVE_THRESHOLD_MS) {
             const trackedId = externalTrackedFiles.get(file)
