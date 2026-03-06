@@ -81,13 +81,14 @@ describe('Server Integration', () => {
     a.ws.send(JSON.stringify({ type: 'join', userName: 'Alice' }))
     await waitForMessage(a.messages, 'presence')
 
-    a.ws.send(JSON.stringify({ type: 'layoutPut', layout: '{"version":1,"tiles":[]}' }))
+    const validLayout = JSON.stringify({ version: 1, cols: 2, rows: 2, tiles: [1,1,1,1], furniture: [] })
+    a.ws.send(JSON.stringify({ type: 'layoutPut', layout: validLayout }))
 
     // B should get layoutFull
     await waitForMessage(b.messages, 'layoutFull')
     const bLayout = b.messages.find(m => m.type === 'layoutFull')
     expect(bLayout).toBeDefined()
-    expect(JSON.parse(bLayout.layoutJson)).toEqual({ version: 1, tiles: [] })
+    expect(JSON.parse(bLayout.layoutJson)).toEqual(JSON.parse(validLayout))
 
     // A should NOT get layoutFull (wait a bit then check)
     await new Promise(r => setTimeout(r, 200))
