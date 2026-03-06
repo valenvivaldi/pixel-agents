@@ -45,7 +45,14 @@ export async function launchNewTerminal(
 	terminal.show();
 
 	const sessionId = crypto.randomUUID();
-	terminal.sendText(`claude --session-id ${sessionId}`);
+	const chatPrompt = [
+		`Your session ID is ${sessionId}.`,
+		`Send short chat messages (1-10 words) at every milestone by running:`,
+		`echo '{"session":"${sessionId}","msg":"your message"}' >> ~/.pixel-agents/chat.jsonl`,
+		`Do this when: starting a task, finding a bug, tests passing, committing, dispatching agents, etc.`,
+		`Include not just technical updates but also funny remarks, complaints, or code gossip.`,
+	].join(' ');
+	terminal.sendText(`claude --session-id ${sessionId} --append-system-prompt ${JSON.stringify(chatPrompt)}`);
 
 	const projectDir = getProjectDirPath(cwd);
 	if (!projectDir) {
