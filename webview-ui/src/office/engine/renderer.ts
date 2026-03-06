@@ -73,6 +73,13 @@ import {
   NICK_PADDING_X_PX,
   NICK_PADDING_Y_PX,
   NICK_REMOTE_TEXT_COLOR,
+  CHAT_BUBBLE_MAX_WIDTH_PX,
+  CHAT_BUBBLE_PADDING_PX,
+  CHAT_BUBBLE_FONT_SIZE_PX,
+  CHAT_BUBBLE_BG,
+  CHAT_BUBBLE_BORDER,
+  CHAT_BUBBLE_TEXT_COLOR,
+  CHAT_BUBBLE_TAIL_SIZE_PX,
 } from '../../constants.js'
 import { OfficeState } from './officeState.js'
 
@@ -802,6 +809,93 @@ export function renderChatBubbles(
   }
 }
 
+// ── Agent chat message bubbles ──────────────────────────────────
+
+export function renderAgentChatBubbles(
+  ctx: CanvasRenderingContext2D,
+  characters: Character[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  for (const ch of characters) {
+    if (!ch.chatMessage) continue
+
+    const text = ch.chatMessage
+    const fontSize = CHAT_BUBBLE_FONT_SIZE_PX * zoom
+    const pad = CHAT_BUBBLE_PADDING_PX * zoom
+    const maxW = CHAT_BUBBLE_MAX_WIDTH_PX * zoom
+    const tailSize = CHAT_BUBBLE_TAIL_SIZE_PX * zoom
+
+    ctx.save()
+    ctx.font = `${fontSize}px "FS Pixel Sans", monospace`
+    ctx.textBaseline = 'top'
+    ctx.textAlign = 'left'
+
+    // Word wrap
+    const words = text.split(' ')
+    const lines: string[] = []
+    let currentLine = ''
+    for (const word of words) {
+      const testLine = currentLine ? currentLine + ' ' + word : word
+      const metrics = ctx.measureText(testLine)
+      if (metrics.width > maxW - pad * 2 && currentLine) {
+        lines.push(currentLine)
+        currentLine = word
+      } else {
+        currentLine = testLine
+      }
+    }
+    if (currentLine) lines.push(currentLine)
+
+    const lineHeight = fontSize * 1.3
+    const textHeight = lines.length * lineHeight
+    const textWidth = Math.min(
+      maxW - pad * 2,
+      Math.max(...lines.map(l => ctx.measureText(l).width)),
+    )
+    const boxW = textWidth + pad * 2
+    const boxH = textHeight + pad * 2
+
+    const sittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0
+    const bx = Math.round(offsetX + ch.x * zoom - boxW / 2)
+    const by = Math.round(offsetY + (ch.y + sittingOff - BUBBLE_VERTICAL_OFFSET_PX) * zoom - boxH - tailSize - 1 * zoom)
+
+    // Fade out in last 0.5s
+    let alpha = 1.0
+    if (ch.chatMessageTimer < BUBBLE_FADE_DURATION_SEC) {
+      alpha = ch.chatMessageTimer / BUBBLE_FADE_DURATION_SEC
+    }
+    if (alpha < 1.0) ctx.globalAlpha = alpha
+
+    // Background
+    ctx.fillStyle = CHAT_BUBBLE_BG
+    ctx.fillRect(bx, by, boxW, boxH)
+    ctx.strokeStyle = CHAT_BUBBLE_BORDER
+    ctx.lineWidth = 1
+    ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1)
+
+    // Tail
+    const tailX = bx + boxW / 2
+    const tailY = by + boxH
+    ctx.fillStyle = CHAT_BUBBLE_BG
+    ctx.beginPath()
+    ctx.moveTo(tailX - tailSize, tailY)
+    ctx.lineTo(tailX + tailSize, tailY)
+    ctx.lineTo(tailX, tailY + tailSize)
+    ctx.closePath()
+    ctx.fill()
+
+    // Text
+    ctx.fillStyle = CHAT_BUBBLE_TEXT_COLOR
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], bx + pad, by + pad + i * lineHeight)
+    }
+
+    ctx.restore()
+  }
+}
+
 // ── Task progress badges ────────────────────────────────────────
 
 export function renderTaskBadges(
@@ -1098,6 +1192,9 @@ export function renderFrame(
 
   // Chat bubbles (Sims-style conversation emojis)
   renderChatBubbles(ctx, characters, offsetX, offsetY, zoom)
+
+  // Agent chat messages (from CLI)
+  renderAgentChatBubbles(ctx, characters, offsetX, offsetY, zoom)
 
   // Task progress badges (above-right of characters)
   renderTaskBadges(ctx, characters, offsetX, offsetY, zoom)
