@@ -811,7 +811,7 @@ function runExternalScan(): void {
                 isExternal: true,
                 projectDir: dir,
                 jsonlFile: file,
-                fileOffset: stat.size,
+                fileOffset: 0, // start from beginning to detect active subagents
                 lineBuffer: '',
                 activeToolIds: new Set(),
                 activeToolStatuses: new Map(),
